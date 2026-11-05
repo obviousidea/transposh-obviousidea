@@ -20,6 +20,7 @@ class transposh_3rdparty {
     /** @var transposh_plugin Container class */
     private $transposh;
     private $page_cache;
+    private $litespeed_cache;
 
     /**
      * Construct our class
@@ -29,6 +30,8 @@ class transposh_3rdparty {
         $this->transposh = &$transposh;
         require_once dirname(__FILE__) . '/transposh_page_cache.php';
         $this->page_cache = new transposh_page_cache($transposh);
+        require_once dirname(__FILE__) . '/transposh_litespeed.php';
+        $this->litespeed_cache = new transposh_litespeed($transposh);
 
         // supercache invalidation of pages - first lets find if supercache is here
         if (function_exists('wp_super_cache_init')) {
