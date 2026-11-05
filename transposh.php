@@ -5,7 +5,7 @@
   Plugin URI: https://github.com/supermimai/transposh-obviousidea
   Description: Translation filter for WordPress. ObviousIdea fork, based on <a href="https://transposh.org/">Transposh</a> by Team Transposh. Configure languages on the <a href="admin.php?page=tp_main">settings page</a>. Development and issues: <a href="https://github.com/supermimai/transposh-obviousidea">GitHub</a>.
   Author: Team Transposh and ObviousIdea
-  Version: 1.0.15
+  Version: 2026.11.1
   Author URI: https://github.com/supermimai/transposh-obviousidea
   License: GPL (https://www.gnu.org/licenses/gpl.txt)
   Text Domain: transposh
@@ -13,7 +13,7 @@
  */
 
 /*
- * Transposh v1.0.15
+ * Transposh v2026.11.1
  * https://transposh.org/
  *
  * Copyright %YEAR%, Team Transposh
@@ -1669,7 +1669,7 @@ class transposh_plugin {
 
         $args = array(
             'slug' => $this->transposh_plugin_basename,
-            'version' => '1.0.15', //$checked_data->checked[$this->transposh_file_location],
+            'version' => '2026.11.1', //$checked_data->checked[$this->transposh_file_location],
         );
         $request_string = array(
             'body' => array(

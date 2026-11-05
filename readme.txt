@@ -4,7 +4,7 @@ Donate link: http://transposh.org/donate/
 Tags: translation, translate, i18n, widget, filter, buddypress, bilingual, multilingual, transposh, language, crowdsourcing, google translate, bing translate, context, wiki, RTL, Hebrew, Spanish, French, Russian, English, Arabic, Portuguese
 Requires at least: 5.8
 Tested up to: 7.1.3
-Stable tag: 1.0.15
+Stable tag: 2026.11.1
 
 Transposh adds best of breed translation support to wordpress, more than a 100 languages are automatically translated and can be manually corrected with ease.
 
@@ -12,6 +12,10 @@ Transposh adds best of breed translation support to wordpress, more than a 100 l
 Transposh translation filter for WordPress offers a unique approach to blog translation. It allows your blog to combine automatic translation with human translation aided by your users with an easy to use in-context interface.
 
 == Changelog ==
+
+= 2026.11.1 =
+* Add translated URLs to SEOPress post and page XML sitemaps.
+* Avoid duplicate entries for the WordPress Posts page when it is included in the page sitemap.
 
 = 1.0.15 =
 * Add native WP Rocket support for language-prefixed pages and language-scoped invalidation after real translation changes.
