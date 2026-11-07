@@ -294,6 +294,18 @@ class transposh_database {
         do_action('transposh_translations_changed', array());
     }
 
+    /** True when at least N rows (N filterable) exist for $lang; cached per dictionary epoch. */
+    function language_has_translations($lang) {
+        $min = max(1, (int) apply_filters('transposh_min_translated_phrases', 1));
+        $key = 'tp_hastr_' . md5($lang . '|' . $this->dictionary_epoch . '|' . $min);
+        $has = get_transient($key);
+        if ($has === false) {
+            $has = (int) $GLOBALS['wpdb']->get_var($GLOBALS['wpdb']->prepare("SELECT COUNT(*) FROM (SELECT 1 FROM {$this->translation_table} WHERE lang = %s LIMIT %d) t", $lang, $min)) >= $min ? 1 : 0;
+            set_transient($key, $has, HOUR_IN_SECONDS);
+        }
+        return (bool) $has;
+    }
+
     private function dictionary_key($original, $lang) {
         return 'transposh:v2:' . $this->dictionary_namespace . ':' . $this->dictionary_epoch . ':' . hash('sha256', $lang . "\0" . $original);
     }
@@ -491,6 +503,7 @@ class transposh_database {
         $firstitem = true;
         $alreadybatched = [];
         $changed_languages = array();
+        $changed_items = array();
         // We are now processing all posted items
         for ($i = 0; $i < $items; $i++) {
             if (isset($_POST["tk$i"])) {
@@ -517,6 +530,17 @@ class transposh_database {
             }
             if (isset($_POST["sr$i"])) {
                 $source = $_POST["sr$i"];
+            }
+            // machine output (engines that do not shield terms) must keep protected terms
+            if ($source > 0) {
+                $plain_orig = html_entity_decode($orig, ENT_QUOTES, 'UTF-8');
+                $plain_trans = html_entity_decode(stripslashes(rawurldecode((string) ($_POST["tr$i"] ?? ''))), ENT_QUOTES, 'UTF-8');
+                foreach (transposh_translate::getProtectedTerms() as $term) {
+                    if (stripos($plain_orig, $term) !== false && stripos($plain_trans, $term) === false) {
+                        tp_logger("Dropping machine translation that lost protected term '$term'", 1);
+                        continue 2;
+                    }
+                }
             }
 
             // we attempt to avoid
@@ -559,6 +583,7 @@ class transposh_database {
 
             // If we have caching - we remove previous entry from cache
             $this->cache_delete($original, $lang);
+            $changed_items[] = array($original, $lang);
             $firstitem = false;
             // TODO - maybe store value here?
         }
@@ -602,6 +627,11 @@ class transposh_database {
             tp_logger($GLOBALS['wpdb']->last_error, 1);
             tp_logger("Error !!! failed to insert to db $original , $translation, $lang,", 1);
             header("HTTP/1.0 404 Failed to update language database " . $GLOBALS['wpdb']->last_error);
+        }
+
+        // The early delete above can race with a reader that re-caches the old row: drop it again once written.
+        foreach ($changed_items as $changed) {
+            $this->cache_delete($changed[0], $changed[1]);
         }
 
         // Notify only after the dictionary has changed, for human and automatic
@@ -654,7 +684,7 @@ class transposh_database {
 
         // The original content is encoded as base64 before it is sent (i.e. token), after we
         // decode it should just the same after it was parsed.
-        $original = esc_sql(html_entity_decode($token, ENT_NOQUOTES, 'UTF-8'));
+        $original = esc_sql(htmlspecialchars(html_entity_decode($token, ENT_NOQUOTES, 'UTF-8')));
 
         // add our own custom header - so we will know that we got here
         header('Transposh: v-' . TRANSPOSH_PLUGIN_VER . ' db_version-' . DB_VERSION);
@@ -692,7 +722,7 @@ class transposh_database {
     //TODO: post this action to backup
     function del_translation_history($token, $langp, $timestampp) {
         // $original = transposh_utils::base64_url_decode($token);
-        $original = esc_sql(html_entity_decode($token, ENT_NOQUOTES, 'UTF-8'));
+        $original = esc_sql(htmlspecialchars(html_entity_decode($token, ENT_NOQUOTES, 'UTF-8')));
         $lang = esc_sql($langp);
         $timestamp = esc_sql($timestampp);
         header('Transposh: v-' . TRANSPOSH_PLUGIN_VER . ' db_version-' . DB_VERSION);

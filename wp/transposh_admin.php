@@ -54,7 +54,7 @@ class transposh_plugin_admin {
         add_filter('comment_row_actions', array(&$this, 'comment_row_actions'), 999, 2);
         // register ajax callbacks
         $ajax_actions = [
-            "close_warning", "reset", "backup", "restore", "dedup", "maint", "cleanup",
+            "close_warning", "reset", "backup", "restore", "dedup", "maint", "cleanup", "purge_cache",
             "translate_all", "post_phrases", "comment_lang", "reset_timers" /* WIP - fetch */
         ];
 
@@ -1079,6 +1079,7 @@ document.addEventListener("DOMContentLoaded", function () {
         echo '<div style="margin:10px 0"><a id="transposh-clean-unimportant" href="#" class="button">' . __('Delete automated translations that add no apparent value', TRANSPOSH_TEXT_DOMAIN) . '</a></div>';
         echo '<div style="margin:10px 0"><a id="transposh-dedup" href="#" class="button">' . __('Remove duplicates translations and originals', TRANSPOSH_TEXT_DOMAIN) . '</a></div>';
         echo '<div style="margin:10px 0"><a id="transposh-maint" href="#" class="button">' . __('Attempt to fix errors caused by previous versions - please backup first', TRANSPOSH_TEXT_DOMAIN) . '</a></div>';
+        echo '<div style="margin:10px 0"><a id="transposh-purge-cache" href="#" class="button">' . __('Purge dictionary cache (after editing the translations table directly)', TRANSPOSH_TEXT_DOMAIN) . '</a></div>';
 
 // WIP        echo '<div style="margin:10px 0"><a id="transposh-fetch" href="#" nonce="' . wp_create_nonce('transposh-clean') . '" class="button">' . __('Try fetching translation files', TRANSPOSH_TEXT_DOMAIN) . '</a></div>';
         echo '<div id="progress_bar_all"></div><div id="tr_translate_title"></div>';
@@ -1501,6 +1502,13 @@ document.addEventListener("DOMContentLoaded", function () {
         $this->admins_only();
         $this->transposh->database->setup_db(true);
         die("maintance triggered");
+    }
+
+    // Purge the dictionary cache (bumps transposh_dictionary_epoch)
+    function on_ajax_tp_purge_cache() {
+        $this->admins_only();
+        $this->transposh->database->cache_clean();
+        die("cache purged");
     }
 
     function on_ajax_tp_get_lang_details() {

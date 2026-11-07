@@ -5,7 +5,7 @@
   Plugin URI: https://github.com/supermimai/transposh-obviousidea
   Description: Translation filter for WordPress. ObviousIdea fork, based on <a href="https://transposh.org/">Transposh</a> by Team Transposh. Configure languages on the <a href="admin.php?page=tp_main">settings page</a>. Development and issues: <a href="https://github.com/supermimai/transposh-obviousidea">GitHub</a>.
   Author: Team Transposh and ObviousIdea
-  Version: 2026.11.1
+  Version: 2026.11.2
   Author URI: https://github.com/supermimai/transposh-obviousidea
   License: GPL (https://www.gnu.org/licenses/gpl.txt)
   Text Domain: transposh
@@ -186,6 +186,8 @@ class transposh_plugin {
         if (!$this->options->dont_add_rel_alternate) {
             add_action('wp_head', array(&$this, 'add_rel_alternate'));
         }
+        add_filter('wp_robots', array(&$this, 'robots_for_untranslated'));
+        add_action('send_headers', array(&$this, 'robots_header'));
 //        add_action('wp_head', array(&$this,'add_transposh_async'));
         add_action('transposh_backup_event', array(&$this, 'run_backup'));
         add_action('transposh_oht_event', array(&$this, 'run_oht'));
@@ -932,28 +934,48 @@ class transposh_plugin {
         $widget_args = $this->widget->create_widget_args($this->get_clean_url());
         tp_logger($widget_args, 4);
         $default_url = '';
+        $home = wp_parse_url($this->home_url);
+        $origin = $home['scheme'] . '://' . $home['host'] . (isset($home['port']) ? ':' . $home['port'] : '');
         // changes according to https://developers.google.com/search/docs/specialty/international/localized-versions
         foreach ($widget_args as $lang) {
-            // Every language page advertises the same reciprocal alternate set.
-            echo '<link rel="alternate" hreflang="' . $lang['isocode'] . '" href="';
-            if ($this->options->full_rel_alternate) {
-                $current_url = (is_ssl() ? 'https://' : 'http://') . transposh_utils::get_clean_server_var('HTTP_HOST') . transposh_utils::get_clean_server_var('REQUEST_URI');
-                $url = transposh_utils::rewrite_url_lang_param($current_url, $this->home_url, $this->enable_permalinks_rewrite, $lang['isocode'], $this->edit_mode);
-                if ($this->options->is_default_language($lang['isocode'])) {
-                    $url = transposh_utils::cleanup_url($url, $this->home_url);
-                }
-                echo $url;
-            } else {
-                $url = $lang['url'];
-                echo $url;
+            // hreflang hrefs must be absolute; $lang['url'] is already HTML-escaped and carries translated slugs
+            if (!$this->options->is_default_language($lang['isocode'])
+                    && !$this->database->language_has_translations($lang['isocode'])) {
+                continue; // never advertise an untranslated (noindex) language
             }
-            echo '"/>';
+            $url = $lang['url'];
+            if (substr($url, 0, 1) === '/' && substr($url, 0, 2) !== '//') {
+                $url = $origin . $url;
+            }
+            echo '<link rel="alternate" hreflang="' . esc_attr($lang['isocode']) . '" href="' . $url . '"/>';
             if ($this->options->is_default_language($lang['isocode'])) {
                 $default_url = $url;
             }
         }
         if ($default_url) {
             echo '<link rel="alternate" hreflang="x-default" href="' . $default_url . '"/>';
+        }
+    }
+
+    /**
+     * Non-default language pages without any stored translation only repeat the default-language content
+     */
+    function is_untranslated_language() {
+        return $this->target_language && !$this->options->is_default_language($this->target_language)
+                && !$this->database->language_has_translations($this->target_language);
+    }
+
+    function robots_for_untranslated($robots) {
+        if ($this->is_untranslated_language()) {
+            unset($robots['index']);
+            $robots['noindex'] = true;
+        }
+        return $robots;
+    }
+
+    function robots_header() {
+        if ($this->is_untranslated_language()) {
+            header('X-Robots-Tag: noindex, follow', true);
         }
     }
 
@@ -1446,8 +1468,11 @@ class transposh_plugin {
         // avoid handling inactive languages
         if (!$this->options->is_active_language($tl))
             return;
+        // the proxy serves on-page auto translation; do not let anyone spend engine quota otherwise
+        if (!$this->options->enable_autotranslate && !current_user_can('manage_options'))
+            return;
         if (isset($_GET['sl'])) {
-            $sl = $_GET['sl'];
+            $sl = (is_string($_GET['sl']) && transposh_consts::is_supported_language($_GET['sl'])) ? $_GET['sl'] : '';
         } else {
             $sl = '';
         }
@@ -1523,7 +1548,7 @@ class transposh_plugin {
                     die('engine not supported');
             }
             if ($result === false) {
-                echo 'Proxy attempt failed<br>' . $GLOBALS['tp_logger']->get_logstr();
+                echo 'Proxy attempt failed';
                 die();
             }
             // proper order for those checks

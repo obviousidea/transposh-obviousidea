@@ -109,7 +109,7 @@ class transposh_editor_table extends WP_List_Table {
     }
 
     function column_original($item) {
-        $actions = ['delete' => sprintf('<a href="?page=%s&action=%s&key=%s">' . __('Delete') . '</a>', filter_input(INPUT_GET, "page"), 'delete', $this->item_key($item))];
+        $actions = ['delete' => sprintf('<a href="?page=%s&action=%s&key=%s&_wpnonce=%s">' . __('Delete') . '</a>', filter_input(INPUT_GET, "page"), 'delete', $this->item_key($item), wp_create_nonce('tp_del_translation'))];
         return sprintf('%1$s %2$s', htmlspecialchars(htmlspecialchars_decode($item['original'])), $this->row_actions($actions));
     }
 
@@ -237,6 +237,7 @@ class transposh_editor_table extends WP_List_Table {
         // echo $this->current_action();
         if ($this->current_action() === 'delete') {
             if (filter_input(INPUT_GET, 'key', FILTER_DEFAULT, FILTER_NULL_ON_FAILURE)) {
+                check_admin_referer('tp_del_translation');
                 list($timestamp, $lang, $original) = explode(',', base64_decode(filter_input(INPUT_GET, 'key')), 3);
                 // echo "($timestamp,$lang,$original)";
                 $return = $my_transposh_plugin->database->del_translation_history($original, $lang, $timestamp);
@@ -245,6 +246,7 @@ class transposh_editor_table extends WP_List_Table {
             }
             $keys = filter_input(INPUT_POST, 'keys', FILTER_DEFAULT, FILTER_REQUIRE_ARRAY);
             if ($keys) {
+                check_admin_referer('bulk-' . $this->_args['plural']);
                 foreach ($keys as $key) {
                     tp_logger($key);
                     list($timestamp, $lang, $original) = explode(',', base64_decode($key), 3);

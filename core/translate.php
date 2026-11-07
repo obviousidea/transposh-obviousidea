@@ -62,7 +62,7 @@ class transposh_translate
         return $response;
     }
 
-    private static function getProtectedTerms(): array {
+    public static function getProtectedTerms(): array {
         global $my_transposh_plugin;
 
         $raw_terms = preg_split('/\R+/', (string) $my_transposh_plugin->options->protected_terms);
@@ -89,7 +89,7 @@ class transposh_translate
         $placeholder_index = 0;
         $restore_map = array();
         foreach ($terms as $term) {
-            $pattern = '~' . preg_quote($term, '~') . '~u';
+            $pattern = '~' . preg_quote($term, '~') . '~iu';
             $text = preg_replace_callback($pattern, function ($matches) use (&$placeholder_index, &$restore_map) {
                 $placeholder = '__TP_PROTECTED_TERM_' . $placeholder_index . '__';
                 $restore_map[$placeholder] = $matches[0];
@@ -113,6 +113,12 @@ class transposh_translate
         }
 
         if (is_string($translated)) {
+            // a placeholder the engine mangled or dropped means the term was lost: refuse the result
+            foreach (array_keys($restore_map) as $placeholder) {
+                if (strpos($translated, $placeholder) === false) {
+                    return false;
+                }
+            }
             return strtr($translated, $restore_map);
         }
 
@@ -464,11 +470,13 @@ class transposh_translate
     private static function getMicrosoftTranslatorConfig(): array {
         global $my_transposh_plugin;
 
-        $key = trim((string)$my_transposh_plugin->options->msn_key);
+        // a wp-config.php constant wins, so the key does not have to live in wp_options
+        $key = trim((string)(defined('TRANSPOSH_MSN_KEY') ? TRANSPOSH_MSN_KEY : $my_transposh_plugin->options->msn_key));
         $region = trim((string)$my_transposh_plugin->options->msn_region);
         $endpoint = trim((string)$my_transposh_plugin->options->msn_endpoint);
 
-        if ($endpoint === '') {
+        // the subscription key travels in a header: never send it over clear http; empty endpoint falls back to https
+        if ($endpoint === '' || stripos($endpoint, 'https://') !== 0) {
             $endpoint = 'https://api.cognitive.microsofttranslator.com';
         }
 

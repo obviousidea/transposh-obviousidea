@@ -40,7 +40,8 @@ class transposh_seopress_sitemaps {
         foreach (explode(',', $options->viewable_languages) as $language) {
             $language = trim($language);
             if (transposh_consts::is_supported_language($language)
-                && $options->is_active_language($language)) {
+                && $options->is_active_language($language)
+                && $this->transposh->database->language_has_translations($language)) {
                 $languages[] = $language;
             }
         }

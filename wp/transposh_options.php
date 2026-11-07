@@ -59,7 +59,7 @@ class transposh_option {
     }
 
     function post_value_id_name() {
-        return 'value="' . $this->value . '" id="' . $this->name . '" name="' . $this->name . '"';
+        return 'value="' . esc_attr($this->value) . '" id="' . esc_attr($this->name) . '" name="' . esc_attr($this->name) . '"';
     }
 
 }
@@ -396,7 +396,7 @@ class transposh_plugin_options {
     function is_active_language($language) {
         if ($this->is_default_language($language))
             return true;
-        return (strpos($this->viewable_languages . ',', $language . ',') !== false);
+        return in_array($language, array_map('trim', explode(',', $this->viewable_languages)), true);
     }
 
 }

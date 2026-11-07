@@ -144,6 +144,11 @@
             return false;
         });
 
+        $("#transposh-purge-cache").click(function() {
+            $.post(ajaxurl, {action: 'tp_purge_cache', nonce: $('#transposh_nonce').val()}, function(data) { alert(data); });
+            return false;
+        });
+
 //  WIP      $("#transposh-fetch").click(function() {
 //            //maintclick($(this));
 //            $.post(ajaxurl, {
