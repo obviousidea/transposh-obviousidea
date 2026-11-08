@@ -1192,9 +1192,23 @@ document.addEventListener("DOMContentLoaded", function () {
     // i did not describe each callback dedicated, what they do can be easily inspected and compare with the admin page displayed
 
     function on_sidebox_news_content() {
+        $repo = defined('TRANSPOSH_FORK_REPO') ? TRANSPOSH_FORK_REPO : 'https://github.com/supermimai/transposh-obviousidea';
         echo '<div style="margin:6px">';
+        echo '<p><strong>' . esc_html__('This is the ObviousIdea fork of Transposh.', TRANSPOSH_TEXT_DOMAIN) . '</strong> '
+            . sprintf(
+                /* translators: %s: fork repository URL */
+                esc_html__('Development, changelog and releases for this build live in the %sGitHub repository%s (bug reports welcome there).', TRANSPOSH_TEXT_DOMAIN),
+                '<a href="' . esc_url($repo) . '" target="_blank">',
+                '</a>')
+            . ' '
+            . sprintf(
+                /* translators: %s: upstream plugin URL */
+                esc_html__('Upstream original by Team Transposh: %s.', TRANSPOSH_TEXT_DOMAIN),
+                '<a href="https://transposh.org" target="_blank">transposh.org</a>')
+            . '</p>';
+        echo '<h4>' . esc_html__('Latest fork releases', TRANSPOSH_TEXT_DOMAIN) . '</h4>';
         // this fork's own release notes; the legacy transposh feedburner feed has been dead for years
-        $feed = defined('TRANSPOSH_FORK_NEWS_FEED') ? TRANSPOSH_FORK_NEWS_FEED : 'https://github.com/supermimai/transposh-obviousidea/releases.atom';
+        $feed = defined('TRANSPOSH_FORK_NEWS_FEED') ? TRANSPOSH_FORK_NEWS_FEED : $repo . '/releases.atom';
         wp_widget_rss_output($feed, array('items' => 5, 'show_date' => 1, 'show_author' => 0, 'show_summary' => 1));
         echo '</div>';
     }
