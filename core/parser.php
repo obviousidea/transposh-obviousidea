@@ -613,7 +613,8 @@ class tp_parser {
         }
 
         // Meta content (keywords, description) are also good places to translate (but not in robots... or http-equiv)
-        if ($node->tag == 'meta' && $node->content && ($node->name != 'robots') && ($node->name != 'viewport') && ($node->{'http-equiv'} != 'Content-Type')) {
+        if ($node->tag == 'meta' && $node->content && ($node->name != 'robots') && ($node->name != 'viewport') && ($node->{'http-equiv'} != 'Content-Type')
+                && !in_array($node->property, array('og:url', 'og:type', 'og:image', 'og:locale'), true) && !in_array($node->name, array('theme-color', 'google-site-verification', 'msvalidate.01', 'twitter:card', 'twitter:image'), true)) {
             $this->parsetext($node->content);
         }
 
@@ -793,6 +794,27 @@ class tp_parser {
                     }
                 }
             }
+            // social/structured-data urls must follow the language page too
+            foreach ($this->html->find('meta[property=og:url]') as $e) {
+                $e->content = call_user_func_array($this->url_rewrite_func, array($e->content));
+            }
+            if ($this->fetch_translate_func) {
+                foreach ($this->html->find('script[type=application/ld+json]') as $e) {
+                    $data = json_decode($e->innertext, true);
+                    if (!is_array($data)) {
+                        continue;
+                    }
+                    array_walk_recursive($data, function (&$value, $key) {
+                        if ($key === 'url' && is_string($value)) {
+                            $value = call_user_func_array($this->url_rewrite_func, array($value));
+                        } elseif (($key === 'headline' || $key === 'description') && is_string($value)) {
+                            list(, $t) = call_user_func_array($this->fetch_translate_func, array($value, $this->lang));
+                            $value = $t ? html_entity_decode($t, ENT_QUOTES, 'UTF-8') : $value;
+                        }
+                    });
+                    $e->innertext = wp_json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
+                }
+            }
         }
 
         // try some prefetching... (//todo - maybe move directly to the phrase create)
@@ -961,14 +983,14 @@ class tp_parser {
                             }
                             // if we need to replace, we store this
                             if ($translated_text) {
-                                $replace[$translated_text] = $ep;
+                                $replace[] = array($translated_text, $ep);
                             }
                         }
                     }
                 }
                 // and later replace
-                foreach (array_reverse($replace, true) as $replace => $epg) {
-                    $e->$title = substr_replace($e->$title, $replace, $epg->start, $epg->len);
+                foreach (array_reverse($replace) as $repl) {
+                    $e->$title = substr_replace($e->$title, $repl[0], $repl[1]->start, $repl[1]->len);
                 }
 
                 $e->outertext .= $span;

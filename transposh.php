@@ -5,7 +5,7 @@
   Plugin URI: https://github.com/supermimai/transposh-obviousidea
   Description: Translation filter for WordPress. ObviousIdea fork, based on <a href="https://transposh.org/">Transposh</a> by Team Transposh. Configure languages on the <a href="admin.php?page=tp_main">settings page</a>. Development and issues: <a href="https://github.com/supermimai/transposh-obviousidea">GitHub</a>.
   Author: Team Transposh and ObviousIdea
-  Version: 2026.11.1
+  Version: 2026.11.2
   Author URI: https://github.com/supermimai/transposh-obviousidea
   License: GPL (https://www.gnu.org/licenses/gpl.txt)
   Text Domain: transposh
@@ -13,7 +13,7 @@
  */
 
 /*
- * Transposh v2026.11.1
+ * Transposh v2026.11.2
  * https://transposh.org/
  *
  * Copyright %YEAR%, Team Transposh
@@ -119,7 +119,6 @@ class transposh_plugin {
     private $tried_buffer = false;
 
     /** @var boolean Do I need to check for updates by myself? After wordpress checked his */
-    private $do_update_check = false;
 
     /**
      * class constructor
@@ -186,6 +185,8 @@ class transposh_plugin {
         if (!$this->options->dont_add_rel_alternate) {
             add_action('wp_head', array(&$this, 'add_rel_alternate'));
         }
+        add_filter('wp_robots', array(&$this, 'robots_for_untranslated'));
+        add_action('send_headers', array(&$this, 'robots_header'));
 //        add_action('wp_head', array(&$this,'add_transposh_async'));
         add_action('transposh_backup_event', array(&$this, 'run_backup'));
         add_action('transposh_oht_event', array(&$this, 'run_oht'));
@@ -931,29 +932,54 @@ class transposh_plugin {
         }
         $widget_args = $this->widget->create_widget_args($this->get_clean_url());
         tp_logger($widget_args, 4);
+        // a page in a language without translations is noindex and would advertise a
+        // non-reciprocal alternate set: publish no hreflang at all there
+        if ($this->is_untranslated_language()) {
+            return;
+        }
         $default_url = '';
+        $home = wp_parse_url($this->home_url);
+        $origin = $home['scheme'] . '://' . $home['host'] . (isset($home['port']) ? ':' . $home['port'] : '');
         // changes according to https://developers.google.com/search/docs/specialty/international/localized-versions
         foreach ($widget_args as $lang) {
-            // Every language page advertises the same reciprocal alternate set.
-            echo '<link rel="alternate" hreflang="' . $lang['isocode'] . '" href="';
-            if ($this->options->full_rel_alternate) {
-                $current_url = (is_ssl() ? 'https://' : 'http://') . transposh_utils::get_clean_server_var('HTTP_HOST') . transposh_utils::get_clean_server_var('REQUEST_URI');
-                $url = transposh_utils::rewrite_url_lang_param($current_url, $this->home_url, $this->enable_permalinks_rewrite, $lang['isocode'], $this->edit_mode);
-                if ($this->options->is_default_language($lang['isocode'])) {
-                    $url = transposh_utils::cleanup_url($url, $this->home_url);
-                }
-                echo $url;
-            } else {
-                $url = $lang['url'];
-                echo $url;
+            // hreflang hrefs must be absolute; $lang['url'] is already HTML-escaped and carries translated slugs
+            if (!$this->options->is_default_language($lang['isocode'])
+                    && !$this->database->language_has_translations($lang['isocode'])) {
+                continue; // never advertise an untranslated (noindex) language
             }
-            echo '"/>';
+            $url = $lang['url'];
+            if (substr($url, 0, 1) === '/' && substr($url, 0, 2) !== '//') {
+                $url = $origin . $url;
+            }
+            echo '<link rel="alternate" hreflang="' . esc_attr($lang['isocode']) . '" href="' . $url . '"/>';
             if ($this->options->is_default_language($lang['isocode'])) {
                 $default_url = $url;
             }
         }
         if ($default_url) {
             echo '<link rel="alternate" hreflang="x-default" href="' . $default_url . '"/>';
+        }
+    }
+
+    /**
+     * Non-default language pages without any stored translation only repeat the default-language content
+     */
+    function is_untranslated_language() {
+        return $this->target_language && !$this->options->is_default_language($this->target_language)
+                && !$this->database->language_has_translations($this->target_language);
+    }
+
+    function robots_for_untranslated($robots) {
+        if ($this->is_untranslated_language()) {
+            unset($robots['index']);
+            $robots['noindex'] = true;
+        }
+        return $robots;
+    }
+
+    function robots_header() {
+        if ($this->is_untranslated_language()) {
+            header('X-Robots-Tag: noindex, follow', true);
         }
     }
 
@@ -1446,14 +1472,23 @@ class transposh_plugin {
         // avoid handling inactive languages
         if (!$this->options->is_active_language($tl))
             return;
-        if (isset($_GET['sl'])) {
-            $sl = $_GET['sl'];
-        } else {
-            $sl = '';
-        }
         $suggestmode = false; // the suggest mode takes one string only, and does not save to the database
         if (isset($_GET['m']) && $_GET['m'] == 's')
             $suggestmode = true;
+        // the proxy serves on-page auto translation; do not let anyone spend engine quota otherwise,
+        // but the editor's one-phrase suggest mode must keep working for authorized translators
+        // suggest mode keeps working for authorized translators even with autotranslation off,
+        // but still requires the editor UI (in edit mode, or explicitly allowed anonymous translators)
+        $suggest_allowed = $suggestmode
+            && ($this->is_translator() || (current_user_can(TRANSLATOR) && !empty($this->edit_mode)))
+            && current_user_can('edit_posts');
+        if (!$this->options->enable_autotranslate && !current_user_can('manage_options') && !$suggest_allowed)
+            return;
+        if (isset($_GET['sl'])) {
+            $sl = (is_string($_GET['sl']) && transposh_consts::is_supported_language($_GET['sl'])) ? $_GET['sl'] : '';
+        } else {
+            $sl = '';
+        }
         if ($suggestmode) {
             if (is_array($_GET['q'])) { // this should not have happened, but lets not crash
                 $q = urlencode(stripslashes($_GET['q'][0]));
@@ -1523,7 +1558,7 @@ class transposh_plugin {
                     die('engine not supported');
             }
             if ($result === false) {
-                echo 'Proxy attempt failed<br>' . $GLOBALS['tp_logger']->get_logstr();
+                echo 'Proxy attempt failed';
                 die();
             }
             // proper order for those checks
@@ -1652,86 +1687,33 @@ class transposh_plugin {
     // Catch the wordpress.org update post
     function filter_wordpress_org_update($arr, $url) {
         tp_logger($url, 5);
-        if (strpos($url, "api.wordpress.org/plugins/update-check/") !== false) {
-            $this->do_update_check = true;
-        }
         return $arr;
     }
 
     function check_for_plugin_update($checked_data) {
-        global $wp_version;
         tp_logger('should we check for upgrades?', 4);
-        if (!$this->do_update_check) {
-            return $checked_data; // thanks wizzud (don't kill the transient)
-        }
-        $this->do_update_check = false; // for next time
-        tp_logger('yes, we should', 4);
-
-        $args = array(
-            'slug' => $this->transposh_plugin_basename,
-            'version' => '2026.11.1', //$checked_data->checked[$this->transposh_file_location],
-        );
-        $request_string = array(
-            'body' => array(
-                'action' => 'basic_check',
-                'request' => serialize($args),
-                'api-key' => md5(get_bloginfo('url'))
-            ),
-            'user-agent' => 'WordPress/' . $wp_version . '; ' . get_bloginfo('url')
-        );
-
-        // Start checking for an update
-        $raw_response = wp_remote_post(TRANSPOSH_UPDATE_SERVICE_URL, $request_string);
-
-        tp_logger($raw_response, 5);
-
-        if (!is_wp_error($raw_response) && ($raw_response['response']['code'] == 200))
-            $response = unserialize($raw_response['body']);
-
-        if (is_object($response) && !empty($response)) // Feed the update data into WP updater
-            $checked_data->response[$this->transposh_plugin_basename] = $response;
-
+        // svc.transposh.org is not this fork's update server: never unserialize() a remote body
         return $checked_data;
     }
 
     // Take over the Plugin info screen
     function plugin_api_call($def, $action, $args) {
-        global $wp_version;
-
         if (!isset($args->slug) || ($args->slug != $this->transposh_plugin_basename))
             return false;
-
-        // Get the current version
-        $plugin_info = get_site_transient('update_plugins');
-        //$current_version = $plugin_info->checked[$plugin_slug . '/' . $plugin_slug . '.php'];
-        $args->version = '%VERSION';
-
-        $request_string = array(
-            'body' => array(
-                'action' => $action,
-                'request' => serialize($args),
-                'api-key' => md5(get_bloginfo('url'))
-            ),
-            'user-agent' => 'WordPress/' . $wp_version . '; ' . get_bloginfo('url')
-        );
-
-        $request = wp_remote_post(TRANSPOSH_UPDATE_SERVICE_URL, $request_string);
-
-        if (is_wp_error($request)) {
-            $res = new WP_Error('plugins_api_failed', __('An Unexpected HTTP Error occurred during the API request.</p> <p><a href="?" onclick="document.location.reload(); return false;">Try again</a>', TRANSPOSH_TEXT_DOMAIN), $request->get_error_message());
-        } else {
-            $res = unserialize($request['body']);
-
-            if ($res === false)
-                $res = new WP_Error('plugins_api_failed', __('An unknown error occurred', TRANSPOSH_TEXT_DOMAIN), $request['body']);
-        }
-
-        return $res;
+        // no fork update server: plugin information comes from GitHub, never unserialize() a remote body
+        return false;
     }
 
 }
 
 $my_transposh_plugin = new transposh_plugin();
+
+// Plugin files are included from wp-settings.php; when that include happens inside a
+// function scope (WP-CLI bootstrap) the instance would only be a local there. Publish
+// it so class methods using `global $my_transposh_plugin` work in every context.
+if (!isset($GLOBALS['my_transposh_plugin'])) {
+    $GLOBALS['my_transposh_plugin'] = $my_transposh_plugin;
+}
 
 // some global functions for programmers
 

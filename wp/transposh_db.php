@@ -285,13 +285,53 @@ class transposh_database {
     /**
      * Clean the memory cache
      */
-    function cache_clean() {
+    function cache_clean($silent = false) {
         // Logical invalidation, including APCu and Redis: never flush a shared
         // backend. Old generations expire through their normal bounded TTL.
         $this->dictionary_epoch = wp_generate_uuid4();
         update_option('transposh_dictionary_epoch', $this->dictionary_epoch, false);
         $this->translations = array();
-        do_action('transposh_translations_changed', array());
+
+        if (!$silent) {
+
+            do_action('transposh_translations_changed', array());
+
+        }
+    }
+
+    /** Transient key holding the SEO availability status of $lang (epoch + threshold scoped). */
+    private function seo_status_key($lang) {
+        $min = max(1, (int) apply_filters('transposh_min_translated_phrases', 1));
+        return 'tp_hastr_' . md5($lang . '|' . $this->dictionary_epoch . '|' . $min);
+    }
+
+    /** Drop the cached SEO status so hreflang/sitemap/noindex recompute right after a dictionary change. */
+    function invalidate_seo_status($lang, $was = null) {
+        if ($was === null) {
+            // fallback: the cached previous status, reading it BEFORE the delete
+            $was = get_transient($this->seo_status_key($lang));
+            if ($was === false) {
+                delete_transient($this->seo_status_key($lang));
+                return;
+            }
+        }
+        delete_transient($this->seo_status_key($lang));
+        if ((bool) $was !== $this->language_has_translations($lang)) {
+            // the hreflang/sitemap alternate set changes on pages of EVERY language
+            do_action('transposh_language_seo_status_changed', $lang);
+        }
+    }
+
+    /** True when at least N rows (N filterable) exist for $lang; cached per dictionary epoch. */
+    function language_has_translations($lang) {
+        $key = $this->seo_status_key($lang);
+        $has = get_transient($key);
+        if ($has === false) {
+            $min = max(1, (int) apply_filters('transposh_min_translated_phrases', 1));
+            $has = (int) $GLOBALS['wpdb']->get_var($GLOBALS['wpdb']->prepare("SELECT COUNT(*) FROM (SELECT 1 FROM {$this->translation_table} WHERE lang = %s LIMIT %d) t", $lang, $min)) >= $min ? 1 : 0;
+            set_transient($key, $has, HOUR_IN_SECONDS);
+        }
+        return (bool) $has;
     }
 
     private function dictionary_key($original, $lang) {
@@ -491,6 +531,8 @@ class transposh_database {
         $firstitem = true;
         $alreadybatched = [];
         $changed_languages = array();
+        $changed_items = array();
+        $seo_before = array(); // per-language status snapshot taken before that language's first write
         // We are now processing all posted items
         for ($i = 0; $i < $items; $i++) {
             if (isset($_POST["tk$i"])) {
@@ -517,6 +559,24 @@ class transposh_database {
             }
             if (isset($_POST["sr$i"])) {
                 $source = $_POST["sr$i"];
+            }
+            // snapshot the language's SEO status before touching the dictionary for it
+            if (!isset($seo_before[$lang])) {
+                $seo_before[$lang] = $this->language_has_translations($lang);
+            }
+            // machine output (engines that do not shield terms) must keep protected terms
+            if ($source > 0) {
+                $plain_orig = html_entity_decode($orig, ENT_QUOTES, 'UTF-8');
+                $plain_trans = html_entity_decode(stripslashes(rawurldecode((string) ($_POST["tr$i"] ?? ''))), ENT_QUOTES, 'UTF-8');
+                foreach (transposh_translate::getProtectedTerms() as $term) {
+                    // mb_stripos keeps case folding correct for non-ASCII brand names; stripos fallback when mbstring is absent
+                    $term_in_orig = (function_exists('mb_stripos') ? mb_stripos($plain_orig, $term) : stripos($plain_orig, $term)) !== false;
+                    $term_in_trans = (function_exists('mb_stripos') ? mb_stripos($plain_trans, $term) : stripos($plain_trans, $term)) !== false;
+                    if ($term_in_orig && !$term_in_trans) {
+                        tp_logger("Dropping machine translation that lost protected term '$term'", 1);
+                        continue 2;
+                    }
+                }
             }
 
             // we attempt to avoid
@@ -559,6 +619,7 @@ class transposh_database {
 
             // If we have caching - we remove previous entry from cache
             $this->cache_delete($original, $lang);
+            $changed_items[] = array($original, $lang);
             $firstitem = false;
             // TODO - maybe store value here?
         }
@@ -602,6 +663,16 @@ class transposh_database {
             tp_logger($GLOBALS['wpdb']->last_error, 1);
             tp_logger("Error !!! failed to insert to db $original , $translation, $lang,", 1);
             header("HTTP/1.0 404 Failed to update language database " . $GLOBALS['wpdb']->last_error);
+        }
+
+        // The early delete above can race with a reader that re-caches the old row: drop it again once written.
+        foreach ($changed_items as $changed) {
+            $this->cache_delete($changed[0], $changed[1]);
+        }
+
+        // the first/last translation of a language flips its hreflang/sitemap/noindex status
+        foreach (array_keys($changed_languages) as $changed_lang) {
+            $this->invalidate_seo_status($changed_lang, $seo_before[$changed_lang] ?? null);
         }
 
         // Notify only after the dictionary has changed, for human and automatic
@@ -654,7 +725,7 @@ class transposh_database {
 
         // The original content is encoded as base64 before it is sent (i.e. token), after we
         // decode it should just the same after it was parsed.
-        $original = esc_sql(html_entity_decode($token, ENT_NOQUOTES, 'UTF-8'));
+        $original = esc_sql(htmlspecialchars(html_entity_decode($token, ENT_NOQUOTES, 'UTF-8')));
 
         // add our own custom header - so we will know that we got here
         header('Transposh: v-' . TRANSPOSH_PLUGIN_VER . ' db_version-' . DB_VERSION);
@@ -692,9 +763,13 @@ class transposh_database {
     //TODO: post this action to backup
     function del_translation_history($token, $langp, $timestampp) {
         // $original = transposh_utils::base64_url_decode($token);
-        $original = esc_sql(html_entity_decode($token, ENT_NOQUOTES, 'UTF-8'));
+        $original = esc_sql(htmlspecialchars(html_entity_decode($token, ENT_NOQUOTES, 'UTF-8')));
         $lang = esc_sql($langp);
         $timestamp = esc_sql($timestampp);
+        // deleting the last translation can flip the language's SEO status back:
+        // capture the pre-mutation status explicitly (an expired transient would hide it)
+        $seo_pre = $this->language_has_translations($langp);
+        $this->invalidate_seo_status($langp, $seo_pre);
         header('Transposh: v-' . TRANSPOSH_PLUGIN_VER . ' db_version-' . DB_VERSION);
         // first we look in the log table
         $inlogtable = false;
@@ -749,6 +824,9 @@ class transposh_database {
                         "ORDER BY timestamp DESC LIMIT 1";
                 $restored = $GLOBALS['wpdb']->query($query);
                 if ($deleted > 0 || $restored > 0) {
+                    // invalidate before notifying so synchronous listeners see the fresh status;
+                    // compare against the pre-mutation snapshot, not a possibly-expired transient
+                    $this->invalidate_seo_status($langp, $seo_pre);
                     do_action('transposh_translations_changed', array($langp));
                 }
                 tp_logger($query, 3);
@@ -1105,6 +1183,14 @@ class transposh_database {
     function deduplicate_auto() {
         // clean duplication in the translation table (don't know how it ever happened...)
         $deduptargets = ['original', 'translated'];
+        $dedup_changed = array();
+        // SEO status of every active language before the dedup (it may delete last rows)
+        $dedup_seo_before = array();
+        foreach (array_map('trim', explode(',', (string) $this->transposh->options->viewable_languages)) as $seo_lang) {
+            if ($seo_lang !== '' && !$this->transposh->options->is_default_language($seo_lang)) {
+                $dedup_seo_before[$seo_lang] = $this->language_has_translations($seo_lang);
+            }
+        }
         foreach ($deduptargets as $target) {
             $dedup = 'SELECT * , count( * )' .
                     ' FROM ' . $this->translation_table .
@@ -1123,7 +1209,21 @@ class transposh_database {
                 $changed = $GLOBALS['wpdb']->query($update);
                 $this->cache_delete($row->original, $row->lang);
                 if ($changed > 0) {
-                    do_action('transposh_translations_changed', array($row->lang));
+                    $dedup_changed[$row->lang] = true;
+                }
+            }
+        }
+        if ($dedup_changed) {
+            // epoch bump refreshes the dictionary and every per-language SEO status,
+            // then a SINGLE consolidated notification
+            $this->cache_clean(true);
+            do_action('transposh_translations_changed', array_keys($dedup_changed));
+            // a dedup can drop a language below the SEO threshold: pages of EVERY
+            // language carry the hreflang set, so a flip must force a full purge
+            foreach (array_keys($dedup_changed) as $seo_lang) {
+                if (isset($dedup_seo_before[$seo_lang])
+                        && $dedup_seo_before[$seo_lang] !== $this->language_has_translations($seo_lang)) {
+                    do_action('transposh_language_seo_status_changed', $seo_lang);
                 }
             }
         }

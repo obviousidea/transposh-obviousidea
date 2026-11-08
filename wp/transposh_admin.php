@@ -54,7 +54,7 @@ class transposh_plugin_admin {
         add_filter('comment_row_actions', array(&$this, 'comment_row_actions'), 999, 2);
         // register ajax callbacks
         $ajax_actions = [
-            "close_warning", "reset", "backup", "restore", "dedup", "maint", "cleanup",
+            "close_warning", "reset", "backup", "restore", "dedup", "maint", "cleanup", "purge_cache",
             "translate_all", "post_phrases", "comment_lang", "reset_timers" /* WIP - fetch */
         ];
 
@@ -93,6 +93,7 @@ class transposh_plugin_admin {
         switch ($_POST['page']) {
             case 'tp_langs':
                 $viewable_langs = array();
+                $sorted_langs = array();
 
                 // first set the default language
                 list ($langcode, ) = explode(",", $_POST['languages'][0]);
@@ -130,8 +131,7 @@ class transposh_plugin_admin {
                 }
 
                 // anonymous needs to be handled differently as it does not have a role
-                tp_logger($_POST['anonymous']);
-                $this->transposh->options->allow_anonymous_translation = $_POST['anonymous'];
+                $this->transposh->options->allow_anonymous_translation = isset($_POST['anonymous']) ? $_POST['anonymous'] : 0;
 
                 $this->transposh->options->enable_default_translate = TP_FROM_POST;
                 $this->transposh->options->enable_search_translate = TP_FROM_POST;
@@ -140,7 +140,7 @@ class transposh_plugin_admin {
 
                 // We will need to refresh rewrite rules for the case someone enabled in wordpress first after transposh
                 // install and then went on to transposh and enabled, and this keeps us safe ;)
-                if ($this->transposh->options->enable_permalinks != $_POST[$this->transposh->options->enable_permalinks_o->get_name()]) {
+                if ($this->transposh->options->enable_permalinks != ($_POST[$this->transposh->options->enable_permalinks_o->get_name()] ?? 0)) {
                     $this->transposh->options->enable_permalinks = TP_FROM_POST;
                     $GLOBALS['wp_rewrite']->flush_rules();
                 }
@@ -204,7 +204,11 @@ class transposh_plugin_admin {
                 $this->transposh->options->enable_url_translate = TP_FROM_POST;
                 $this->transposh->options->dont_add_rel_alternate = TP_FROM_POST;
                 $this->transposh->options->full_rel_alternate = TP_FROM_POST;
-                $this->transposh->options->protected_terms = TP_FROM_POST;
+                // protected_terms belongs to its own tab; assigning it here silently
+                // wiped the list whenever the Advanced tab was saved without that field
+                if (isset($_POST['protected_terms'])) {
+                    $this->transposh->options->protected_terms = TP_FROM_POST;
+                }
 
                 $this->transposh->options->jqueryui_override = TP_FROM_POST;
                 $this->transposh->options->parser_dont_break_puncts = TP_FROM_POST;
@@ -348,9 +352,9 @@ class transposh_plugin_admin {
             // retrieve the function output and set it as tab content
             'content' => '<h3>' . __('Transposh makes your blog translatable', TRANSPOSH_TEXT_DOMAIN) . '</h3>' .
             '<p>' . __('For further help and assistance, please look at the following resources:', TRANSPOSH_TEXT_DOMAIN) . '</p>' .
-            '<a href="http://transposh.org/">' . __('Plugin homepage', TRANSPOSH_TEXT_DOMAIN) . '</a><br/>' .
-            '<a href="http://transposh.org/faq/">' . __('Frequently asked questions', TRANSPOSH_TEXT_DOMAIN) . '</a><br/>' .
-            '<a href="http://trac.transposh.org/">' . __('Development website', TRANSPOSH_TEXT_DOMAIN) . '</a><br/>'
+            '<a href="https://transposh.org/">' . __('Plugin homepage (upstream)', TRANSPOSH_TEXT_DOMAIN) . '</a><br/>' .
+            '<a href="https://transposh.org/faq/">' . __('Frequently asked questions', TRANSPOSH_TEXT_DOMAIN) . '</a><br/>' .
+            '<a href="https://github.com/supermimai/transposh-obviousidea">' . __('Development website (this fork)', TRANSPOSH_TEXT_DOMAIN) . '</a><br/>'
         ));
         $screen->add_help_tab(array(
             'id' => 'languages', // This should be unique for the screen.
@@ -514,8 +518,8 @@ Please note that while Transposh currently offers a hosted LibreTranslate servic
         global $wp_locale;
 
         // Default language section
-        $langname = transposh_consts::get_language_name($this->transposh->options->default_language);
-        $langorigname = transposh_consts::get_language_orig_name($this->transposh->options->default_language);
+        $langname = esc_html(transposh_consts::get_language_name($this->transposh->options->default_language));
+        $langorigname = esc_html(transposh_consts::get_language_orig_name($this->transposh->options->default_language));
         $flag = transposh_consts::get_language_flag($this->transposh->options->default_language);
         echo '<div id="default_lang" style="overflow:auto;padding-bottom:10px;">';
         $this->header(__('Default Language (drag another language here to make it default)', TRANSPOSH_TEXT_DOMAIN), 'languages');
@@ -697,7 +701,7 @@ Please note that while Transposh currently offers a hosted LibreTranslate servic
         $this->textinput($this->transposh->options->transposh_key_o
                 , ''
                 , __('Service key', TRANSPOSH_TEXT_DOMAIN));
-        echo '<a target="_blank" href="http://transposh.org/faq/#restore">' . __('How to restore?', TRANSPOSH_TEXT_DOMAIN) . '</a><br/>';
+        echo '<a target="_blank" href="https://transposh.org/faq/#restore">' . __('How to restore?', TRANSPOSH_TEXT_DOMAIN) . '</a><br/>';
         $this->sectionstop();
 
     }
@@ -727,6 +731,9 @@ Please note that while Transposh currently offers a hosted LibreTranslate servic
         $this->textinput($this->transposh->options->baidu_key_o
                 , array('baidu', __('Baidu API key', TRANSPOSH_TEXT_DOMAIN))
                 , __('API Key', TRANSPOSH_TEXT_DOMAIN), 35, 'keys');
+        if (empty($this->transposh->options->libretranslate_server)) {
+            echo '<p><em>' . sprintf(esc_html__('If left empty this falls back to the upstream service %s (plain HTTP, likely offline). Enter your own https:// LibreTranslate server.', TRANSPOSH_TEXT_DOMAIN), esc_html(TRANSPOSH_LIBRETRANSLATE_SERVICE_URL)) . '</em></p>';
+        }
         $this->textinput($this->transposh->options->libretranslate_server_o
             , array('libretranslate', __('LibreTranslate Server', TRANSPOSH_TEXT_DOMAIN))
             , __('Server URL', TRANSPOSH_TEXT_DOMAIN), 100, 'libretranslate');
@@ -1015,7 +1022,7 @@ document.addEventListener("DOMContentLoaded", function () {
         $this->checkbox($this->transposh->options->widget_allow_set_deflang_o, __('Allow user to set current language as default', TRANSPOSH_TEXT_DOMAIN)
                 , __('Widget will allow setting this language as user default', TRANSPOSH_TEXT_DOMAIN));
 
-        $this->checkbox($this->transposh->options->widget_remove_logo_o, __('Remove transposh logo (see <a href="http://transposh.org/logoterms">terms</a>)', TRANSPOSH_TEXT_DOMAIN)
+        $this->checkbox($this->transposh->options->widget_remove_logo_o, __('Remove transposh logo (see <a href="https://transposh.org/logoterms">terms</a>)', TRANSPOSH_TEXT_DOMAIN)
                 , __('Transposh logo will not appear on widget', TRANSPOSH_TEXT_DOMAIN));
         $this->select($this->transposh->options->widget_theme_o, __('Edit interface theme:', TRANSPOSH_TEXT_DOMAIN), __('Edit interface (and progress bar) theme:', TRANSPOSH_TEXT_DOMAIN), transposh_consts::$jqueryui_themes, false);
         $this->sectionstop();
@@ -1079,6 +1086,7 @@ document.addEventListener("DOMContentLoaded", function () {
         echo '<div style="margin:10px 0"><a id="transposh-clean-unimportant" href="#" class="button">' . __('Delete automated translations that add no apparent value', TRANSPOSH_TEXT_DOMAIN) . '</a></div>';
         echo '<div style="margin:10px 0"><a id="transposh-dedup" href="#" class="button">' . __('Remove duplicates translations and originals', TRANSPOSH_TEXT_DOMAIN) . '</a></div>';
         echo '<div style="margin:10px 0"><a id="transposh-maint" href="#" class="button">' . __('Attempt to fix errors caused by previous versions - please backup first', TRANSPOSH_TEXT_DOMAIN) . '</a></div>';
+        echo '<div style="margin:10px 0"><a id="transposh-purge-cache" href="#" class="button">' . __('Purge dictionary cache (after editing the translations table directly)', TRANSPOSH_TEXT_DOMAIN) . '</a></div>';
 
 // WIP        echo '<div style="margin:10px 0"><a id="transposh-fetch" href="#" nonce="' . wp_create_nonce('transposh-clean') . '" class="button">' . __('Try fetching translation files', TRANSPOSH_TEXT_DOMAIN) . '</a></div>';
         echo '<div id="progress_bar_all"></div><div id="tr_translate_title"></div>';
@@ -1097,7 +1105,7 @@ document.addEventListener("DOMContentLoaded", function () {
         echo '<ul style="list-style-type:disc;margin-' . $this->localeleft . ':20px;">';
         echo '<li><a href="https://transposh.org">';
         echo __('Our website', TRANSPOSH_TEXT_DOMAIN);
-        echo '</a></li><li><a href="http://blog.transposh.com">';
+        echo '</a></li><li><a href="https://github.com/supermimai/transposh-obviousidea">' . __('This fork (ObviousIdea)', TRANSPOSH_TEXT_DOMAIN) . '</a></li><li><a href="https://blog.transposh.com">';
         echo __('Our blog', TRANSPOSH_TEXT_DOMAIN);
         echo '</a></li><li><a href="https://twitter.com/transposh">';
         echo __('Our twitter account (feel free to follow!)', TRANSPOSH_TEXT_DOMAIN);
@@ -1131,7 +1139,7 @@ document.addEventListener("DOMContentLoaded", function () {
         echo __('Contact us directly via:', TRANSPOSH_TEXT_DOMAIN);
         echo '<ul style="list-style-type:disc;margin-' . $this->localeleft . ':20px;">';
         echo '<li><a href="https://transposh.org/contact-us/">' . __('Our contact form', TRANSPOSH_TEXT_DOMAIN) . '</a></li>';
-        echo '<li><a href="https://transposh.org/redir/newfeature">' . __('Suggest a Feature', TRANSPOSH_TEXT_DOMAIN) . '</a></li>';
+        echo '<li><a href="https://github.com/supermimai/transposh-obviousidea/issues/new">' . __('Suggest a Feature or Report a Bug (this fork)', TRANSPOSH_TEXT_DOMAIN) . '</a></li>';
         echo '<li><a href="https://transposh.org/redir/newticket">' . __('Report a Bug', TRANSPOSH_TEXT_DOMAIN) . '</a></li>';
         echo '</ul>';
 
@@ -1177,15 +1185,31 @@ document.addEventListener("DOMContentLoaded", function () {
         $this->update_admin_options();
 
         // let's redirect the post request into get request (you may add additional params at the url, if you need to show save results
-        $this->transposh->tp_redirect($_POST['_wp_http_referer']);
+        $this->transposh->tp_redirect(wp_get_referer() ?: admin_url('admin.php?page=tp_main'));
     }
 
     // below you will find for each registered metabox the callback method, that produces the content inside the boxes
     // i did not describe each callback dedicated, what they do can be easily inspected and compare with the admin page displayed
 
     function on_sidebox_news_content() {
+        $repo = defined('TRANSPOSH_FORK_REPO') ? TRANSPOSH_FORK_REPO : 'https://github.com/supermimai/transposh-obviousidea';
         echo '<div style="margin:6px">';
-        wp_widget_rss_output('http://feeds2.feedburner.com/transposh', array('items' => 5));
+        echo '<p><strong>' . esc_html__('This is the ObviousIdea fork of Transposh.', TRANSPOSH_TEXT_DOMAIN) . '</strong> '
+            . sprintf(
+                /* translators: %s: fork repository URL */
+                esc_html__('Development, changelog and releases for this build live in the %sGitHub repository%s (bug reports welcome there).', TRANSPOSH_TEXT_DOMAIN),
+                '<a href="' . esc_url($repo) . '" target="_blank">',
+                '</a>')
+            . ' '
+            . sprintf(
+                /* translators: %s: upstream plugin URL */
+                esc_html__('Upstream original by Team Transposh: %s.', TRANSPOSH_TEXT_DOMAIN),
+                '<a href="https://transposh.org" target="_blank">transposh.org</a>')
+            . '</p>';
+        echo '<h4>' . esc_html__('Latest fork releases', TRANSPOSH_TEXT_DOMAIN) . '</h4>';
+        // this fork's own release notes; the legacy transposh feedburner feed has been dead for years
+        $feed = defined('TRANSPOSH_FORK_NEWS_FEED') ? TRANSPOSH_FORK_NEWS_FEED : $repo . '/releases.atom';
+        wp_widget_rss_output($feed, array('items' => 5, 'show_date' => 1, 'show_author' => 0, 'show_summary' => 1));
         echo '</div>';
     }
 
@@ -1373,7 +1397,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
     /** UTILITY FUNCTIONS  END * */
     function tp_notices() {
-        if ((int) ini_get('memory_limit') < 64 && strpos(strtolower(ini_get('memory_limit')), 'g') == false) {
+        $tp_mem_bytes = wp_convert_hr_to_bytes(ini_get('memory_limit'));
+        if ($tp_mem_bytes > 0 && $tp_mem_bytes < 64 * MB_IN_BYTES) {
             $this->add_warning('tp_mem_warning', sprintf(__('Your current PHP memory limit of %s is quite low, if you experience blank pages please consider increasing it.', TRANSPOSH_TEXT_DOMAIN), ini_get('memory_limit')) . ' <a href="http://transposh.org/faq#blankpages">' . __('Check Transposh FAQs', TRANSPOSH_TEXT_DOMAIN) . '</a>');
         }
 
@@ -1417,6 +1442,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!$this->transposh->options->get_transposh_admin_hide_warning($id)) {
             //$this->add_warning_script();
             wp_enqueue_script('transposh_warningclose', $this->transposh->transposh_plugin_url . '/' . TRANSPOSH_DIR_JS . '/admin/warningclose.js', array('jquery'), TRANSPOSH_PLUGIN_VER, true);
+            wp_localize_script('transposh_warningclose', 'tp_warn', array('nonce' => wp_create_nonce(-1)));
             echo '<div class="' . $level . '"><p>&#9888;&nbsp;' .
             $message .
             '<a id="' . $id . '" href="#" class="warning-close" style="float:inline-end; margin-inline-start: .3em;">' . __('Hide Notice', TRANSPOSH_TEXT_DOMAIN) . '</a>' .
@@ -1450,7 +1476,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // ajax stuff!
     function on_ajax_tp_close_warning() {
         $this->admins_only();
-        $this->transposh->options->set_transposh_admin_hide_warning($_POST['id']);
+        $this->transposh->options->set_transposh_admin_hide_warning(sanitize_key(wp_unslash($_POST['id'])));
         $this->transposh->options->update_options();
         die(); // this is required to return a proper result
     }
@@ -1501,6 +1527,13 @@ document.addEventListener("DOMContentLoaded", function () {
         $this->admins_only();
         $this->transposh->database->setup_db(true);
         die("maintance triggered");
+    }
+
+    // Purge the dictionary cache (bumps transposh_dictionary_epoch)
+    function on_ajax_tp_purge_cache() {
+        $this->admins_only();
+        $this->transposh->database->cache_clean();
+        die("cache purged");
     }
 
     function on_ajax_tp_get_lang_details() {
@@ -1712,8 +1745,12 @@ document.addEventListener("DOMContentLoaded", function () {
         $page_ids = $wpdb->get_col("SELECT ID FROM $wpdb->posts WHERE (post_type='page' OR post_type='post') AND (post_status='publish' OR post_status='private') ORDER BY ID DESC");
         // only high capabilities users can...
         // add a fake post to translate things such as tags
-        if (!current_user_can('edit_post', $page_ids[0])) {
-            return;
+        // keep the JSON array shape the caller iterates (an error object would break it)
+        if (!$page_ids) {
+            // nothing published yet: only the synthetic item (tags/widgets) remains
+            $page_ids = array();
+        } elseif (!current_user_can('edit_post', $page_ids[0])) {
+            die(json_encode(array()));
         }
         $page_ids[] = "-555";
         echo json_encode($page_ids);
