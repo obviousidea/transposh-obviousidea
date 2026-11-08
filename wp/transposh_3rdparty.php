@@ -29,6 +29,8 @@ class transposh_3rdparty {
         $this->transposh = &$transposh;
         require_once dirname(__FILE__) . '/transposh_page_cache.php';
         $this->page_cache = new transposh_page_cache($transposh);
+        require_once dirname(__FILE__) . '/transposh_cloudflare_cache.php';
+        new transposh_cloudflare_cache();
         require_once dirname(__FILE__) . '/transposh_seopress_sitemaps.php';
         new transposh_seopress_sitemaps($transposh);
 
