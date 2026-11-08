@@ -53,9 +53,9 @@ function transposh_test_noop_translations($fixture_class = 'transposh_noop_fixtu
             }
             return 1;
         }
-        function insert($table, $data, $formats = null) { $this->num_queries++; return 1; }
-        function update($table, $data, $where, $formats = null, $where_formats = null) { $this->num_queries++; return 1; }
-        function delete($table, $where, $where_formats = null) { $this->num_queries++; return 1; }
+        function insert($table, $data, $formats = null) { $this->num_queries++; if ($this->counter !== null) { $this->counter->n++; } return 1; }
+        function update($table, $data, $where, $formats = null, $where_formats = null) { $this->num_queries++; if ($this->counter !== null) { $this->counter->n++; } return 1; }
+        function delete($table, $where, $where_formats = null) { $this->num_queries++; if ($this->counter !== null) { $this->counter->n++; } return 1; }
         // WP 6.7 core option API (delete_transient) reaches these while $GLOBALS['wpdb'] is the spy
         function get_row($query = null, $output = null, $y = 0) { return null; }
         function get_var($query = null, $y = 0) { return null; }
@@ -94,11 +94,11 @@ function transposh_test_noop_translations($fixture_class = 'transposh_noop_fixtu
         $GLOBALS['wpdb'] = $spy;
         $examples = array('plain'=>'Bonjour','ampersand'=>'Photos & images','apostrophe'=>"L’image d'aujourd’hui",'quotes'=>'Say "Bonjour"','entity'=>'A &amp; B','percent'=>'Literal %20 and %2F','markup'=>'<strong>Bonjour</strong>');
         foreach ($examples as $name=>$text) {
-            $spy->queries = array(); $events = array(); $db->fixture_deletes = 0;
+            $spy->queries = array(); $events = array(); $seo_events = array(); $order = array(); $db->fixture_deletes = 0;
             $db->fixture_old = array(0, htmlspecialchars($text));
             $_POST = array('items'=>1,'tk0'=>'Unit no-op phrase','tr0'=>rawurlencode($text),'ln0'=>'fr','sr0'=>0);
             $db->update_translation('unit-test');
-            $checks['identical_'.$name] = !$spy->queries && !$events && $db->fixture_deletes === 0;
+            $checks['identical_'.$name] = !$spy->queries && !$events && !$seo_events && $order === array() && $db->fixture_deletes === 0;
             $observations[$name] = array('sql_writes'=>count($spy->queries),'invalidation_events'=>count($events));
         }
         foreach (array('text_change'=>array(0,'Ancien','Nouveau'),'source_change'=>array(1,'Bonjour','Bonjour')) as $name=>$case) {
