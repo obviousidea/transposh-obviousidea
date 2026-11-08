@@ -12,6 +12,7 @@ class transposh_page_cache {
         add_filter('do_rocket_generate_caching_files', array($this, 'can_generate_cache'));
         add_filter('rocket_buffer', array($this, 'editing_buffer'), 1);
         add_action('transposh_translations_changed', array($this, 'translations_changed'));
+        add_action('transposh_language_seo_status_changed', array($this, 'status_changed'));
         add_action('shutdown', array($this, 'flush_pending'), PHP_INT_MAX - 20);
     }
 
@@ -52,6 +53,12 @@ class transposh_page_cache {
     function editing_buffer($html) {
         // Rocket treats an empty result as "use the original, unoptimized HTML".
         return !empty($this->transposh->edit_mode) ? '' : $html;
+    }
+
+    function status_changed($language) {
+        // a language appearing/vanishing from hreflang sets changes pages in every language
+        $this->pending = true;
+        $this->all_languages = true;
     }
 
     function translations_changed($languages) {

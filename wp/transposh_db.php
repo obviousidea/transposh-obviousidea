@@ -302,7 +302,16 @@ class transposh_database {
 
     /** Drop the cached SEO status so hreflang/sitemap/noindex recompute right after a dictionary change. */
     function invalidate_seo_status($lang) {
-        delete_transient($this->seo_status_key($lang));
+        $key = $this->seo_status_key($lang);
+        $was = get_transient($key);
+        delete_transient($key);
+        if ($was === false) {
+            return; // nothing was cached: no previously published status could change
+        }
+        if ((bool) $was !== $this->language_has_translations($lang)) {
+            // the hreflang/sitemap alternate set changes on pages of EVERY language
+            do_action('transposh_language_seo_status_changed', $lang);
+        }
     }
 
     /** True when at least N rows (N filterable) exist for $lang; cached per dictionary epoch. */
@@ -800,9 +809,9 @@ class transposh_database {
                         "ORDER BY timestamp DESC LIMIT 1";
                 $restored = $GLOBALS['wpdb']->query($query);
                 if ($deleted > 0 || $restored > 0) {
-                    do_action('transposh_translations_changed', array($langp));
-                    // re-check after the delete actually happened (a concurrent read may have re-cached)
+                    // invalidate before notifying so synchronous listeners see the fresh status
                     $this->invalidate_seo_status($langp);
+                    do_action('transposh_translations_changed', array($langp));
                 }
                 tp_logger($query, 3);
 
@@ -1158,6 +1167,7 @@ class transposh_database {
     function deduplicate_auto() {
         // clean duplication in the translation table (don't know how it ever happened...)
         $deduptargets = ['original', 'translated'];
+        $dedup_changed = array();
         foreach ($deduptargets as $target) {
             $dedup = 'SELECT * , count( * )' .
                     ' FROM ' . $this->translation_table .
@@ -1176,9 +1186,15 @@ class transposh_database {
                 $changed = $GLOBALS['wpdb']->query($update);
                 $this->cache_delete($row->original, $row->lang);
                 if ($changed > 0) {
-                    do_action('transposh_translations_changed', array($row->lang));
+                    $dedup_changed[$row->lang] = true;
                 }
             }
+        }
+        if ($dedup_changed) {
+            // epoch bump refreshes the dictionary and every per-language SEO status
+            // BEFORE anyone is notified (cache_clean also fires the generic change hook)
+            $this->cache_clean();
+            do_action('transposh_translations_changed', array_keys($dedup_changed));
         }
     }
 

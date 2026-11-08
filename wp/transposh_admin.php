@@ -1512,7 +1512,6 @@ document.addEventListener("DOMContentLoaded", function () {
     function on_ajax_tp_cleanup() {
         $this->admins_only();
         $this->transposh->database->cleanup(filter_input(INPUT_POST, 'days', FILTER_SANITIZE_NUMBER_INT));
-        $this->transposh->database->cache_clean(); // rows were deleted: refresh dictionary and per-language SEO status
         die("cleanup triggered");
     }
 
@@ -1520,7 +1519,6 @@ document.addEventListener("DOMContentLoaded", function () {
     function on_ajax_tp_dedup() {
         $this->admins_only();
         $this->transposh->database->deduplicate_auto();
-        $this->transposh->database->cache_clean(); // rows were deleted: refresh dictionary and per-language SEO status
         die("dedup triggered");
     }
 
