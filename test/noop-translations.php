@@ -20,10 +20,18 @@ function transposh_test_noop_translations($fixture_class = 'transposh_noop_fixtu
     add_action('transposh_translations_changed', static function($langs) use (&$events) { $events[] = $langs; });
     $spy = new class($real_db) {
         public $queries = array(); public $last_error = ''; public $num_queries = 0;
+        public $prefix = 'unit_'; public $options = 'unit_options'; public $insert_id = 0;
         private $real;
         function __construct($real) { $this->real = $real; }
         function _escape($value) { return $this->real->_escape($value); }
+        function esc_like($value) { return addcslashes((string) $value, '_%\\'); }
+        function prepare($query, ...$args) { return vsprintf($query, array_map(array($this, '_escape'), $args)); }
         function query($sql) { $this->queries[] = $sql; $this->num_queries++; return 1; }
+        // WP 6.7 core option API (delete_transient) reaches these while $GLOBALS['wpdb'] is the spy
+        function get_row($query = null, $output = null, $y = 0) { return null; }
+        function get_var($query = null, $y = 0) { return null; }
+        function get_col($query = null) { return array(); }
+        function get_results($query = null, $output = null) { return array(); }
     };
     $ref = new ReflectionClass(get_parent_class($fixture_class));
     $db = (new ReflectionClass($fixture_class))->newInstanceWithoutConstructor();
