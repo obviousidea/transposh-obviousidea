@@ -4,16 +4,20 @@ class transposh_noop_fixture extends transposh_database {
     public $fixture_old;
     public $fixture_deletes = 0;
     public $fixture_seo_status = false; // stable: pre/post snapshots match, no flip events
-    public $fixture_flip_on_cache_delete = false; // simulate: first row for the language appears
-    public $fixture_flip_on_delete = false; // simulate: last row for the language disappears
+    public $fixture_flip_on_write = false; // simulate: the INSERT makes the language non-empty
+    public $fixture_flip_on_delete = false; // simulate: the DELETE removes the last row
+    public $seo_snapshot_langs = array(); // languages asked for snapshots, in call order
+    public $seo_snapshot_query_counts = array(); // $wpdb query count at each snapshot call
     function fetch_translation($original, $lang) { return $this->fixture_old; }
     function cache_delete($original, $lang) {
         $this->fixture_deletes++;
-        if ($this->fixture_flip_on_cache_delete) {
-            $this->fixture_seo_status = true;
-        }
     }
-    function language_has_translations($lang) { return $this->fixture_seo_status; }
+    public $query_counter = null; // shared stdClass{->n} wired by the test
+    function language_has_translations($lang) {
+        $this->seo_snapshot_langs[] = $lang;
+        $this->seo_snapshot_query_counts[] = $this->query_counter ? $this->query_counter->n : -1;
+        return $this->fixture_seo_status;
+    }
 }
 function transposh_test_noop_translations($fixture_class = 'transposh_noop_fixture') {
     $real_db = $GLOBALS['wpdb']; $real_post = $_POST;
@@ -25,25 +29,32 @@ function transposh_test_noop_translations($fixture_class = 'transposh_noop_fixtu
     }
     $events = array();
     $seo_events = array();
-    add_action('transposh_translations_changed', static function($langs) use (&$events) { $events[] = $langs; });
-    add_action('transposh_language_seo_status_changed', static function($lang) use (&$seo_events) { $seo_events[] = $lang; });
+    $order = array(); // chronological cross-hook log: catches notify-before-invalidate regressions
+    add_action('transposh_translations_changed', static function($langs) use (&$events, &$order) { $events[] = $langs; $order[] = array('changed', $langs); });
+    add_action('transposh_language_seo_status_changed', static function($lang) use (&$seo_events, &$order) { $seo_events[] = $lang; $order[] = array('seo', $lang); });
     $spy = new class($real_db) {
         public $queries = array(); public $last_error = ''; public $num_queries = 0;
         public $prefix = 'unit_'; public $options = 'unit_options'; public $insert_id = 0;
-        public $log_rows = array(); public $main_rows = array(); public $on_delete = null;
+        public $log_rows = array(); public $main_rows = array(); public $on_delete = null; public $on_write = null;
         private $real;
         function __construct($real) { $this->real = $real; }
         function _escape($value) { return $this->real->_escape($value); }
         function esc_like($value) { return addcslashes((string) $value, '_%\\'); }
         function prepare($query, ...$args) { return vsprintf($query, array_map(array($this, '_escape'), $args)); }
+        public $counter = null; // shared stdClass{->n}
         function query($sql) {
             $this->queries[] = $sql; $this->num_queries++;
-            if ($this->on_delete !== null && preg_match('/^\s*(DELETE|DELETE\s)/i', $sql)) {
+            if ($this->counter !== null) { $this->counter->n++; }
+            if ($this->on_delete !== null && preg_match('/^\s*DELETE\b/i', $sql)) {
                 call_user_func($this->on_delete);
+            }
+            if ($this->on_write !== null && preg_match('/^\s*INSERT INTO unit_translations\b/i', $sql)) {
+                call_user_func($this->on_write);
             }
             return 1;
         }
         function insert($table, $data, $formats = null) { $this->num_queries++; return 1; }
+        function update($table, $data, $where, $formats = null, $where_formats = null) { $this->num_queries++; return 1; }
         function delete($table, $where, $where_formats = null) { $this->num_queries++; return 1; }
         // WP 6.7 core option API (delete_transient) reaches these while $GLOBALS['wpdb'] is the spy
         function get_row($query = null, $output = null, $y = 0) { return null; }
@@ -70,6 +81,14 @@ function transposh_test_noop_translations($fixture_class = 'transposh_noop_fixtu
             $db->fixture_seo_status = false; // the DELETE removed the last row of the language
         }
     };
+    $spy->on_write = static function () use ($db) {
+        if ($db->fixture_flip_on_write) {
+            $db->fixture_seo_status = true; // the INSERT created the first row of the language
+        }
+    };
+    $tp_counter = new class { public $n = 0; };
+    $spy->counter = $tp_counter;
+    $db->query_counter = $tp_counter;
     $checks = array(); $observations = array();
     try {
         $GLOBALS['wpdb'] = $spy;
@@ -96,35 +115,49 @@ function transposh_test_noop_translations($fixture_class = 'transposh_noop_fixtu
         $real_server = $_SERVER;
         try {
             $_SERVER['REMOTE_ADDR'] = '';
-            // (a) first human translation for the language: flip must fire exactly once
-            $spy->queries = array(); $events = array(); $seo_events = array(); $spy->log_rows = array(); $spy->main_rows = array();
-            $db->fixture_old = null; $db->fixture_deletes = 0;
-            $db->fixture_seo_status = false; $db->fixture_flip_on_cache_delete = true;
+            // (a) first human translation for the language: the SEO flip (pre-write snapshot vs
+            // post-write state) must fire exactly once and BEFORE the change notification
+            $spy->queries = array(); $events = array(); $seo_events = array(); $order = array();
+            $spy->log_rows = array(); $spy->main_rows = array();
+            $db->fixture_old = null; $db->fixture_deletes = 0; $db->seo_snapshot_langs = array();
+            $db->seo_snapshot_query_counts = array(); $tp_counter->n = 0;
+            $db->fixture_seo_status = false; $db->fixture_flip_on_write = true;
             $_POST = array('items'=>1,'tk0'=>'Unit flip phrase','tr0'=>rawurlencode('Premiere'),'ln0'=>'fr','sr0'=>0);
             $db->update_translation('unit-test');
-            $checks['seo_flip_fires_on_first_translation'] = $seo_events === array('fr') && $events === array(array('fr'));
-            // (b) deletion of the last translation: pre true / post false must fire the flip
-            $spy->queries = array(); $events = array(); $seo_events = array();
+            $checks['seo_flip_fires_on_first_translation'] = $order === array(array('seo', 'fr'), array('changed', array('fr')));
+            // snapshot AND post-write recompute both query the language: every snapshot
+            // call must target the written language and the FIRST one must precede any SQL
+            $checks['seo_snapshot_uses_the_written_language'] = $db->seo_snapshot_langs !== array()
+                && array_values(array_unique($db->seo_snapshot_langs)) === array('fr')
+                && (int) $db->seo_snapshot_query_counts[0] === 0; // first snapshot BEFORE any SQL
+            // (b) deletion of the last translation: pre true / post false must fire the flip,
+            // again strictly before the change notification
+            $spy->queries = array(); $events = array(); $seo_events = array(); $order = array();
             $spy->log_rows = array();
             $spy->main_rows = array((object)array('translated'=>'Premiere','translated_by'=>'','timestamp'=>1,'source'=>'0'));
-            $db->fixture_seo_status = true; $db->fixture_flip_on_cache_delete = false; $db->fixture_flip_on_delete = true;
+            $db->fixture_seo_status = true; $db->fixture_flip_on_write = false; $db->fixture_flip_on_delete = true;
             $db->del_translation_history('Unit flip phrase', 'fr', 1);
-            $checks['seo_flip_fires_on_last_deletion'] = $seo_events === array('fr') && $events === array(array('fr'));
+            $checks['seo_flip_fires_on_last_deletion'] = $order === array(array('seo', 'fr'), array('changed', array('fr')));
             // (c) dedup without duplicates: nothing is notified and no flip fires
-            $spy->queries = array(); $events = array(); $seo_events = array(); $spy->log_rows = array(); $spy->main_rows = array();
+            $spy->queries = array(); $events = array(); $seo_events = array(); $order = array();
+            $spy->log_rows = array(); $spy->main_rows = array();
             $db->fixture_flip_on_delete = false; $db->fixture_seo_status = false;
             $db->deduplicate_auto();
-            $checks['dedup_noop_is_silent'] = $events === array() && $seo_events === array() && $spy->queries === array();
-            // (d) dedup deleting duplicate rows that empties the language: flip must fire once
-            $spy->queries = array(); $events = array(); $seo_events = array();
+            $checks['dedup_noop_is_silent'] = $order === array() && $spy->queries === array();
+            // (d) dedup deleting duplicate rows that empties the language: flip must fire once;
+            // here the consolidated notification intentionally precedes the flip comparison
+            // (the shared epoch bump already invalidated everything, the flip only upgrades the
+            // page-cache purge to all languages)
+            $spy->queries = array(); $events = array(); $seo_events = array(); $order = array();
             $spy->log_rows = array();
             $spy->main_rows = array((object)array('original'=>'dup','translated'=>'dup-fr','lang'=>'fr','count'=>'2'));
-            $db->fixture_seo_status = true;
+            $db->fixture_seo_status = true; $db->fixture_flip_on_delete = true;
             $db->deduplicate_auto();
-            $checks['seo_flip_fires_on_dedup_empties_language'] = $seo_events === array('fr') && $events === array(array('fr'));
+            $checks['seo_flip_fires_on_dedup_empties_language'] = $order === array(array('changed', array('fr')), array('seo', 'fr'));
         } finally {
-            $_SERVER = $real_server; $spy->log_rows = array(); $spy->main_rows = array(); $spy->on_delete = null;
-            $db->fixture_flip_on_cache_delete = false; $db->fixture_flip_on_delete = false;
+            $_SERVER = $real_server; $spy->log_rows = array(); $spy->main_rows = array();
+            $spy->on_delete = null; $spy->on_write = null;
+            $db->fixture_flip_on_write = false; $db->fixture_flip_on_delete = false;
         }
         return array('checks'=>$checks,'observations'=>$observations,'real_translation_writes'=>false);
     } finally {
