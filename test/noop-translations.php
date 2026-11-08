@@ -59,7 +59,10 @@ function transposh_test_noop_translations($fixture_class = 'transposh_noop_fixtu
             $db->fixture_old = array($case[0], htmlspecialchars($case[1]));
             $_POST = array('items'=>1,'tk0'=>'Unit changed phrase','tr0'=>rawurlencode($case[2]),'ln0'=>'fr','sr0'=>0);
             $db->update_translation('unit-test');
-            $checks[$name.'_still_invalidates_language'] = count($spy->queries) === 3 && $events === array(array('fr')) && $db->fixture_deletes === 1;
+            // two cache_delete calls per changed item are intentional: once when the batch
+            // item is accepted and once again after the write commits (a concurrent reader may
+            // have re-populated the entry from stale data while the batch was running)
+            $checks[$name.'_still_invalidates_language'] = count($spy->queries) === 3 && $events === array(array('fr')) && $db->fixture_deletes === 2;
         }
         return array('checks'=>$checks,'observations'=>$observations,'real_translation_writes'=>false);
     } finally {
