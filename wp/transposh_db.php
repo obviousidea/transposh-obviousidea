@@ -310,6 +310,7 @@ class transposh_database {
         $key = $this->seo_status_key($lang);
         $has = get_transient($key);
         if ($has === false) {
+            $min = max(1, (int) apply_filters('transposh_min_translated_phrases', 1));
             $has = (int) $GLOBALS['wpdb']->get_var($GLOBALS['wpdb']->prepare("SELECT COUNT(*) FROM (SELECT 1 FROM {$this->translation_table} WHERE lang = %s LIMIT %d) t", $lang, $min)) >= $min ? 1 : 0;
             set_transient($key, $has, HOUR_IN_SECONDS);
         }
@@ -546,8 +547,10 @@ class transposh_database {
                 $plain_orig = html_entity_decode($orig, ENT_QUOTES, 'UTF-8');
                 $plain_trans = html_entity_decode(stripslashes(rawurldecode((string) ($_POST["tr$i"] ?? ''))), ENT_QUOTES, 'UTF-8');
                 foreach (transposh_translate::getProtectedTerms() as $term) {
-                    // mb_stripos keeps case folding correct for non-ASCII brand names
-                    if (mb_stripos($plain_orig, $term) !== false && mb_stripos($plain_trans, $term) === false) {
+                    // mb_stripos keeps case folding correct for non-ASCII brand names; stripos fallback when mbstring is absent
+                    $term_in_orig = (function_exists('mb_stripos') ? mb_stripos($plain_orig, $term) : stripos($plain_orig, $term)) !== false;
+                    $term_in_trans = (function_exists('mb_stripos') ? mb_stripos($plain_trans, $term) : stripos($plain_trans, $term)) !== false;
+                    if ($term_in_orig && !$term_in_trans) {
                         tp_logger("Dropping machine translation that lost protected term '$term'", 1);
                         continue 2;
                     }
@@ -646,7 +649,7 @@ class transposh_database {
         }
 
         // the first/last translation of a language flips its hreflang/sitemap/noindex status
-        foreach ($changed_languages as $changed_lang) {
+        foreach (array_keys($changed_languages) as $changed_lang) {
             $this->invalidate_seo_status($changed_lang);
         }
 
@@ -798,6 +801,8 @@ class transposh_database {
                 $restored = $GLOBALS['wpdb']->query($query);
                 if ($deleted > 0 || $restored > 0) {
                     do_action('transposh_translations_changed', array($langp));
+                    // re-check after the delete actually happened (a concurrent read may have re-cached)
+                    $this->invalidate_seo_status($langp);
                 }
                 tp_logger($query, 3);
 

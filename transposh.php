@@ -119,7 +119,6 @@ class transposh_plugin {
     private $tried_buffer = false;
 
     /** @var boolean Do I need to check for updates by myself? After wordpress checked his */
-    private $do_update_check = false;
 
     /**
      * class constructor
@@ -1684,14 +1683,10 @@ class transposh_plugin {
     // Catch the wordpress.org update post
     function filter_wordpress_org_update($arr, $url) {
         tp_logger($url, 5);
-        if (strpos($url, "api.wordpress.org/plugins/update-check/") !== false) {
-            $this->do_update_check = true;
-        }
         return $arr;
     }
 
     function check_for_plugin_update($checked_data) {
-        global $wp_version;
         tp_logger('should we check for upgrades?', 4);
         // svc.transposh.org is not this fork's update server: never unserialize() a remote body
         return $checked_data;
@@ -1699,8 +1694,6 @@ class transposh_plugin {
 
     // Take over the Plugin info screen
     function plugin_api_call($def, $action, $args) {
-        global $wp_version;
-
         if (!isset($args->slug) || ($args->slug != $this->transposh_plugin_basename))
             return false;
         // no fork update server: plugin information comes from GitHub, never unserialize() a remote body
