@@ -3,8 +3,10 @@
 class transposh_noop_fixture extends transposh_database {
     public $fixture_old;
     public $fixture_deletes = 0;
+    public $fixture_seo_status = false; // stable: pre/post snapshots match, no flip events
     function fetch_translation($original, $lang) { return $this->fixture_old; }
     function cache_delete($original, $lang) { $this->fixture_deletes++; }
+    function language_has_translations($lang) { return $this->fixture_seo_status; }
 }
 function transposh_test_noop_translations($fixture_class = 'transposh_noop_fixture') {
     $real_db = $GLOBALS['wpdb']; $real_post = $_POST;

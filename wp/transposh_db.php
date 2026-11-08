@@ -1220,8 +1220,9 @@ class transposh_database {
             do_action('transposh_translations_changed', array_keys($dedup_changed));
             // a dedup can drop a language below the SEO threshold: pages of EVERY
             // language carry the hreflang set, so a flip must force a full purge
-            foreach ($dedup_seo_before as $seo_lang => $seo_was) {
-                if ($seo_was !== $this->language_has_translations($seo_lang)) {
+            foreach (array_keys($dedup_changed) as $seo_lang) {
+                if (isset($dedup_seo_before[$seo_lang])
+                        && $dedup_seo_before[$seo_lang] !== $this->language_has_translations($seo_lang)) {
                     do_action('transposh_language_seo_status_changed', $seo_lang);
                 }
             }
