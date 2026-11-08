@@ -764,8 +764,10 @@ class transposh_database {
         $original = esc_sql(htmlspecialchars(html_entity_decode($token, ENT_NOQUOTES, 'UTF-8')));
         $lang = esc_sql($langp);
         $timestamp = esc_sql($timestampp);
-        // deleting the last translation can flip the language's SEO status back
-        $this->invalidate_seo_status($langp);
+        // deleting the last translation can flip the language's SEO status back:
+        // capture the pre-mutation status explicitly (an expired transient would hide it)
+        $seo_pre = $this->language_has_translations($langp);
+        $this->invalidate_seo_status($langp, $seo_pre);
         header('Transposh: v-' . TRANSPOSH_PLUGIN_VER . ' db_version-' . DB_VERSION);
         // first we look in the log table
         $inlogtable = false;
@@ -820,8 +822,9 @@ class transposh_database {
                         "ORDER BY timestamp DESC LIMIT 1";
                 $restored = $GLOBALS['wpdb']->query($query);
                 if ($deleted > 0 || $restored > 0) {
-                    // invalidate before notifying so synchronous listeners see the fresh status
-                    $this->invalidate_seo_status($langp);
+                    // invalidate before notifying so synchronous listeners see the fresh status;
+                    // compare against the pre-mutation snapshot, not a possibly-expired transient
+                    $this->invalidate_seo_status($langp, $seo_pre);
                     do_action('transposh_translations_changed', array($langp));
                 }
                 tp_logger($query, 3);
