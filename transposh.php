@@ -1477,8 +1477,12 @@ class transposh_plugin {
             $suggestmode = true;
         // the proxy serves on-page auto translation; do not let anyone spend engine quota otherwise,
         // but the editor's one-phrase suggest mode must keep working for authorized translators
-        if (!$this->options->enable_autotranslate && !current_user_can('manage_options')
-                && !($suggestmode && $this->is_translator()))
+        // suggest mode keeps working for authorized translators even with autotranslation off,
+        // but still requires the editor UI (in edit mode, or explicitly allowed anonymous translators)
+        $suggest_allowed = $suggestmode
+            && ($this->is_translator() || (current_user_can(TRANSLATOR) && !empty($this->edit_mode)))
+            && current_user_can('edit_posts');
+        if (!$this->options->enable_autotranslate && !current_user_can('manage_options') && !$suggest_allowed)
             return;
         if (isset($_GET['sl'])) {
             $sl = (is_string($_GET['sl']) && transposh_consts::is_supported_language($_GET['sl'])) ? $_GET['sl'] : '';

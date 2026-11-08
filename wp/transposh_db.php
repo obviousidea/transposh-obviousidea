@@ -285,13 +285,18 @@ class transposh_database {
     /**
      * Clean the memory cache
      */
-    function cache_clean() {
+    function cache_clean($silent = false) {
         // Logical invalidation, including APCu and Redis: never flush a shared
         // backend. Old generations expire through their normal bounded TTL.
         $this->dictionary_epoch = wp_generate_uuid4();
         update_option('transposh_dictionary_epoch', $this->dictionary_epoch, false);
         $this->translations = array();
-        do_action('transposh_translations_changed', array());
+
+        if (!$silent) {
+
+            do_action('transposh_translations_changed', array());
+
+        }
     }
 
     /** Transient key holding the SEO availability status of $lang (epoch + threshold scoped). */
@@ -301,12 +306,13 @@ class transposh_database {
     }
 
     /** Drop the cached SEO status so hreflang/sitemap/noindex recompute right after a dictionary change. */
-    function invalidate_seo_status($lang) {
-        $key = $this->seo_status_key($lang);
-        $was = get_transient($key);
-        delete_transient($key);
-        if ($was === false) {
-            return; // nothing was cached: no previously published status could change
+    function invalidate_seo_status($lang, $was = null) {
+        delete_transient($this->seo_status_key($lang));
+        if ($was === null) {
+            $was = get_transient($this->seo_status_key($lang)); // fallback: cached previous status, if any
+            if ($was === false) {
+                return;
+            }
         }
         if ((bool) $was !== $this->language_has_translations($lang)) {
             // the hreflang/sitemap alternate set changes on pages of EVERY language
@@ -524,6 +530,7 @@ class transposh_database {
         $alreadybatched = [];
         $changed_languages = array();
         $changed_items = array();
+        $seo_before = array(); // per-language status snapshot taken before that language's first write
         // We are now processing all posted items
         for ($i = 0; $i < $items; $i++) {
             if (isset($_POST["tk$i"])) {
@@ -550,6 +557,10 @@ class transposh_database {
             }
             if (isset($_POST["sr$i"])) {
                 $source = $_POST["sr$i"];
+            }
+            // snapshot the language's SEO status before touching the dictionary for it
+            if (!isset($seo_before[$lang])) {
+                $seo_before[$lang] = $this->language_has_translations($lang);
             }
             // machine output (engines that do not shield terms) must keep protected terms
             if ($source > 0) {
@@ -659,7 +670,7 @@ class transposh_database {
 
         // the first/last translation of a language flips its hreflang/sitemap/noindex status
         foreach (array_keys($changed_languages) as $changed_lang) {
-            $this->invalidate_seo_status($changed_lang);
+            $this->invalidate_seo_status($changed_lang, $seo_before[$changed_lang] ?? null);
         }
 
         // Notify only after the dictionary has changed, for human and automatic
@@ -1191,9 +1202,9 @@ class transposh_database {
             }
         }
         if ($dedup_changed) {
-            // epoch bump refreshes the dictionary and every per-language SEO status
-            // BEFORE anyone is notified (cache_clean also fires the generic change hook)
-            $this->cache_clean();
+            // epoch bump refreshes the dictionary and every per-language SEO status,
+            // then a SINGLE consolidated notification
+            $this->cache_clean(true);
             do_action('transposh_translations_changed', array_keys($dedup_changed));
         }
     }
