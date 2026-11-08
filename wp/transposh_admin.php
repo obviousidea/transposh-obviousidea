@@ -1745,11 +1745,12 @@ document.addEventListener("DOMContentLoaded", function () {
         $page_ids = $wpdb->get_col("SELECT ID FROM $wpdb->posts WHERE (post_type='page' OR post_type='post') AND (post_status='publish' OR post_status='private') ORDER BY ID DESC");
         // only high capabilities users can...
         // add a fake post to translate things such as tags
+        // keep the JSON array shape the caller iterates (an error object would break it)
         if (!$page_ids) {
-            wp_send_json_error(__('Nothing published to translate yet', TRANSPOSH_TEXT_DOMAIN));
-        }
-        if (!current_user_can('edit_post', $page_ids[0])) {
-            wp_send_json_error(__('Only an admin is allowed', TRANSPOSH_TEXT_DOMAIN));
+            // nothing published yet: only the synthetic item (tags/widgets) remains
+            $page_ids = array();
+        } elseif (!current_user_can('edit_post', $page_ids[0])) {
+            die(json_encode(array()));
         }
         $page_ids[] = "-555";
         echo json_encode($page_ids);

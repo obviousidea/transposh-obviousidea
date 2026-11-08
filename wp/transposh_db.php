@@ -294,10 +294,20 @@ class transposh_database {
         do_action('transposh_translations_changed', array());
     }
 
+    /** Transient key holding the SEO availability status of $lang (epoch + threshold scoped). */
+    private function seo_status_key($lang) {
+        $min = max(1, (int) apply_filters('transposh_min_translated_phrases', 1));
+        return 'tp_hastr_' . md5($lang . '|' . $this->dictionary_epoch . '|' . $min);
+    }
+
+    /** Drop the cached SEO status so hreflang/sitemap/noindex recompute right after a dictionary change. */
+    function invalidate_seo_status($lang) {
+        delete_transient($this->seo_status_key($lang));
+    }
+
     /** True when at least N rows (N filterable) exist for $lang; cached per dictionary epoch. */
     function language_has_translations($lang) {
-        $min = max(1, (int) apply_filters('transposh_min_translated_phrases', 1));
-        $key = 'tp_hastr_' . md5($lang . '|' . $this->dictionary_epoch . '|' . $min);
+        $key = $this->seo_status_key($lang);
         $has = get_transient($key);
         if ($has === false) {
             $has = (int) $GLOBALS['wpdb']->get_var($GLOBALS['wpdb']->prepare("SELECT COUNT(*) FROM (SELECT 1 FROM {$this->translation_table} WHERE lang = %s LIMIT %d) t", $lang, $min)) >= $min ? 1 : 0;
@@ -536,7 +546,8 @@ class transposh_database {
                 $plain_orig = html_entity_decode($orig, ENT_QUOTES, 'UTF-8');
                 $plain_trans = html_entity_decode(stripslashes(rawurldecode((string) ($_POST["tr$i"] ?? ''))), ENT_QUOTES, 'UTF-8');
                 foreach (transposh_translate::getProtectedTerms() as $term) {
-                    if (stripos($plain_orig, $term) !== false && stripos($plain_trans, $term) === false) {
+                    // mb_stripos keeps case folding correct for non-ASCII brand names
+                    if (mb_stripos($plain_orig, $term) !== false && mb_stripos($plain_trans, $term) === false) {
                         tp_logger("Dropping machine translation that lost protected term '$term'", 1);
                         continue 2;
                     }
@@ -634,6 +645,11 @@ class transposh_database {
             $this->cache_delete($changed[0], $changed[1]);
         }
 
+        // the first/last translation of a language flips its hreflang/sitemap/noindex status
+        foreach ($changed_languages as $changed_lang) {
+            $this->invalidate_seo_status($changed_lang);
+        }
+
         // Notify only after the dictionary has changed, for human and automatic
         // batches alike. A failed insertion can still follow a successful delete.
         if ($delresult > 0 || $addresult > 0) {
@@ -725,6 +741,8 @@ class transposh_database {
         $original = esc_sql(htmlspecialchars(html_entity_decode($token, ENT_NOQUOTES, 'UTF-8')));
         $lang = esc_sql($langp);
         $timestamp = esc_sql($timestampp);
+        // deleting the last translation can flip the language's SEO status back
+        $this->invalidate_seo_status($langp);
         header('Transposh: v-' . TRANSPOSH_PLUGIN_VER . ' db_version-' . DB_VERSION);
         // first we look in the log table
         $inlogtable = false;

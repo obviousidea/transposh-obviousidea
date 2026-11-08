@@ -100,7 +100,7 @@ class transposh_editor_table extends WP_List_Table {
     function column_lang($item) {
         $filter = "";
         if (filter_input(INPUT_GET, 'fl', FILTER_DEFAULT, FILTER_NULL_ON_FAILURE)) {
-            $filter = sprintf('<a href="?page=%s&action=%s%s">' . __('Remove filter') . '</a>', filter_input(INPUT_GET, "page"), 'filter-by', $this->get_column_filter('fl'));
+            $filter = sprintf('<a href="?page=%s&action=%s%s">' . __('Remove filter') . '</a>', esc_attr((string) filter_input(INPUT_GET, "page")), 'filter-by', $this->get_column_filter('fl'));
         } else {
             $filter = sprintf('<a href="?page=%s&action=%s&fl=%s%s">' . __('Filter') . '</a>', esc_attr((string) filter_input(INPUT_GET, "page")), 'filter-by', rawurlencode($item['lang']), $this->get_column_filter('fl'));
         }
@@ -126,7 +126,7 @@ class transposh_editor_table extends WP_List_Table {
         $by = transposh_utils::wordpress_user_by_by($item['translated_by']);
         $filter = "";
         if (filter_input(INPUT_GET, 'ftb', FILTER_DEFAULT, FILTER_NULL_ON_FAILURE)) {
-            $filter = sprintf('<a href="?page=%s&action=%s%s">' . __('Remove filter') . '</a>', filter_input(INPUT_GET, "page"), 'filter-by', $this->get_column_filter('ftb'));
+            $filter = sprintf('<a href="?page=%s&action=%s%s">' . __('Remove filter') . '</a>', esc_attr((string) filter_input(INPUT_GET, "page")), 'filter-by', $this->get_column_filter('ftb'));
         } else {
             $filter = sprintf('<a href="?page=%s&action=%s&ftb=%s%s">' . __('Filter') . '</a>', esc_attr((string) filter_input(INPUT_GET, "page")), 'filter-by', rawurlencode($item['translated_by']), $this->get_column_filter('ftb'));
         }

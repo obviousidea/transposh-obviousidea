@@ -4,7 +4,7 @@ Donate link: http://transposh.org/donate/
 Tags: translation, translate, i18n, widget, filter, buddypress, bilingual, multilingual, transposh, language, crowdsourcing, google translate, bing translate, context, wiki, RTL, Hebrew, Spanish, French, Russian, English, Arabic, Portuguese
 Requires at least: 5.8
 Tested up to: 7.1.3
-Stable tag: 2026.11.1
+Stable tag: 2026.11.2
 
 Transposh adds best of breed translation support to wordpress, more than a 100 languages are automatically translated and can be manually corrected with ease.
 
@@ -12,6 +12,13 @@ Transposh adds best of breed translation support to wordpress, more than a 100 l
 Transposh translation filter for WordPress offers a unique approach to blog translation. It allows your blog to combine automatic translation with human translation aided by your users with an easy to use in-context interface.
 
 == Changelog ==
+
+= 2026.11.2 =
+* hreflang and x-default now absolute URLs; languages without stored translations are noindex (meta + X-Robots-Tag), excluded from hreflang sets and from SEOPress sitemaps, with cache-aware status invalidation on every dictionary write.
+* Protected terms: comma or newline lists, case-insensitive matching, enforced on every engine write, results losing a term are rejected; fixed the Advanced tab silently wiping the term list.
+* Translation editor: stored XSS escaped, delete and bulk actions CSRF-protected, rows with accents no longer break history/delete, purge-dictionary-cache button added.
+* Parser: attribute corruption on duplicate translations fixed; og:url and JSON-LD localized; technical meta tags no longer translated.
+* Hardening: upstream backup/restore/update services disabled (no remote unserialize), proxy quota gate with editor suggest-mode passthrough, Microsoft key via wp-config constant and HTTPS-only endpoint, PHP 8.3 admin save fixes, memory-limit check corrected.
 
 = 2026.11.1 =
 * Add translated URLs to SEOPress post and page XML sitemaps.

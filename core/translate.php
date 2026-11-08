@@ -66,7 +66,9 @@ class transposh_translate
         global $my_transposh_plugin;
 
         // the UI example asks for comma separated terms; legacy stored lists are newline separated
-        $raw_terms = preg_split('/[\R,]+/', (string) $my_transposh_plugin->options->protected_terms);
+        $raw_terms = preg_split('/(?:\R|,)+/u', (string) $my_transposh_plugin->options->protected_terms);
+        // PCRE refuses \R inside a character class: never iterate a failed split
+        $raw_terms = is_array($raw_terms) ? $raw_terms : preg_split('/,/', (string) $my_transposh_plugin->options->protected_terms);
         $terms = array();
         foreach ($raw_terms as $term) {
             $term = trim((string) $term);

@@ -13,7 +13,7 @@
  */
 
 /*
- * Transposh v2026.11.1
+ * Transposh v2026.11.2
  * https://transposh.org/
  *
  * Copyright %YEAR%, Team Transposh
@@ -933,6 +933,11 @@ class transposh_plugin {
         }
         $widget_args = $this->widget->create_widget_args($this->get_clean_url());
         tp_logger($widget_args, 4);
+        // a page in a language without translations is noindex and would advertise a
+        // non-reciprocal alternate set: publish no hreflang at all there
+        if ($this->is_untranslated_language()) {
+            return;
+        }
         $default_url = '';
         $home = wp_parse_url($this->home_url);
         $origin = $home['scheme'] . '://' . $home['host'] . (isset($home['port']) ? ':' . $home['port'] : '');
@@ -1468,17 +1473,19 @@ class transposh_plugin {
         // avoid handling inactive languages
         if (!$this->options->is_active_language($tl))
             return;
-        // the proxy serves on-page auto translation; do not let anyone spend engine quota otherwise
-        if (!$this->options->enable_autotranslate && !current_user_can('manage_options'))
+        $suggestmode = false; // the suggest mode takes one string only, and does not save to the database
+        if (isset($_GET['m']) && $_GET['m'] == 's')
+            $suggestmode = true;
+        // the proxy serves on-page auto translation; do not let anyone spend engine quota otherwise,
+        // but the editor's one-phrase suggest mode must keep working for authorized translators
+        if (!$this->options->enable_autotranslate && !current_user_can('manage_options')
+                && !($suggestmode && $this->is_translator()))
             return;
         if (isset($_GET['sl'])) {
             $sl = (is_string($_GET['sl']) && transposh_consts::is_supported_language($_GET['sl'])) ? $_GET['sl'] : '';
         } else {
             $sl = '';
         }
-        $suggestmode = false; // the suggest mode takes one string only, and does not save to the database
-        if (isset($_GET['m']) && $_GET['m'] == 's')
-            $suggestmode = true;
         if ($suggestmode) {
             if (is_array($_GET['q'])) { // this should not have happened, but lets not crash
                 $q = urlencode(stripslashes($_GET['q'][0]));
@@ -1688,37 +1695,6 @@ class transposh_plugin {
         tp_logger('should we check for upgrades?', 4);
         // svc.transposh.org is not this fork's update server: never unserialize() a remote body
         return $checked_data;
-        if (!$this->do_update_check) {
-            return $checked_data; // thanks wizzud (don't kill the transient)
-        }
-        $this->do_update_check = false; // for next time
-        tp_logger('yes, we should', 4);
-
-        $args = array(
-            'slug' => $this->transposh_plugin_basename,
-            'version' => '2026.11.1', //$checked_data->checked[$this->transposh_file_location],
-        );
-        $request_string = array(
-            'body' => array(
-                'action' => 'basic_check',
-                'request' => serialize($args),
-                'api-key' => md5(get_bloginfo('url'))
-            ),
-            'user-agent' => 'WordPress/' . $wp_version . '; ' . get_bloginfo('url')
-        );
-
-        // Start checking for an update
-        $raw_response = wp_remote_post(TRANSPOSH_UPDATE_SERVICE_URL, $request_string);
-
-        tp_logger($raw_response, 5);
-
-        if (!is_wp_error($raw_response) && ($raw_response['response']['code'] == 200))
-            $response = unserialize($raw_response['body']);
-
-        if (is_object($response) && !empty($response)) // Feed the update data into WP updater
-            $checked_data->response[$this->transposh_plugin_basename] = $response;
-
-        return $checked_data;
     }
 
     // Take over the Plugin info screen
@@ -1729,33 +1705,6 @@ class transposh_plugin {
             return false;
         // no fork update server: plugin information comes from GitHub, never unserialize() a remote body
         return false;
-
-        // Get the current version
-        $plugin_info = get_site_transient('update_plugins');
-        //$current_version = $plugin_info->checked[$plugin_slug . '/' . $plugin_slug . '.php'];
-        $args->version = '%VERSION';
-
-        $request_string = array(
-            'body' => array(
-                'action' => $action,
-                'request' => serialize($args),
-                'api-key' => md5(get_bloginfo('url'))
-            ),
-            'user-agent' => 'WordPress/' . $wp_version . '; ' . get_bloginfo('url')
-        );
-
-        $request = wp_remote_post(TRANSPOSH_UPDATE_SERVICE_URL, $request_string);
-
-        if (is_wp_error($request)) {
-            $res = new WP_Error('plugins_api_failed', __('An Unexpected HTTP Error occurred during the API request.</p> <p><a href="?" onclick="document.location.reload(); return false;">Try again</a>', TRANSPOSH_TEXT_DOMAIN), $request->get_error_message());
-        } else {
-            $res = unserialize($request['body']);
-
-            if ($res === false)
-                $res = new WP_Error('plugins_api_failed', __('An unknown error occurred', TRANSPOSH_TEXT_DOMAIN), $request['body']);
-        }
-
-        return $res;
     }
 
 }
