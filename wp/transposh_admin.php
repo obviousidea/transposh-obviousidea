@@ -348,9 +348,9 @@ class transposh_plugin_admin {
             // retrieve the function output and set it as tab content
             'content' => '<h3>' . __('Transposh makes your blog translatable', TRANSPOSH_TEXT_DOMAIN) . '</h3>' .
             '<p>' . __('For further help and assistance, please look at the following resources:', TRANSPOSH_TEXT_DOMAIN) . '</p>' .
-            '<a href="http://transposh.org/">' . __('Plugin homepage', TRANSPOSH_TEXT_DOMAIN) . '</a><br/>' .
-            '<a href="http://transposh.org/faq/">' . __('Frequently asked questions', TRANSPOSH_TEXT_DOMAIN) . '</a><br/>' .
-            '<a href="http://trac.transposh.org/">' . __('Development website', TRANSPOSH_TEXT_DOMAIN) . '</a><br/>'
+            '<a href="https://transposh.org/">' . __('Plugin homepage (upstream)', TRANSPOSH_TEXT_DOMAIN) . '</a><br/>' .
+            '<a href="https://transposh.org/faq/">' . __('Frequently asked questions', TRANSPOSH_TEXT_DOMAIN) . '</a><br/>' .
+            '<a href="https://github.com/supermimai/transposh-obviousidea">' . __('Development website (this fork)', TRANSPOSH_TEXT_DOMAIN) . '</a><br/>'
         ));
         $screen->add_help_tab(array(
             'id' => 'languages', // This should be unique for the screen.
@@ -697,7 +697,7 @@ Please note that while Transposh currently offers a hosted LibreTranslate servic
         $this->textinput($this->transposh->options->transposh_key_o
                 , ''
                 , __('Service key', TRANSPOSH_TEXT_DOMAIN));
-        echo '<a target="_blank" href="http://transposh.org/faq/#restore">' . __('How to restore?', TRANSPOSH_TEXT_DOMAIN) . '</a><br/>';
+        echo '<a target="_blank" href="https://transposh.org/faq/#restore">' . __('How to restore?', TRANSPOSH_TEXT_DOMAIN) . '</a><br/>';
         $this->sectionstop();
 
     }
@@ -1015,7 +1015,7 @@ document.addEventListener("DOMContentLoaded", function () {
         $this->checkbox($this->transposh->options->widget_allow_set_deflang_o, __('Allow user to set current language as default', TRANSPOSH_TEXT_DOMAIN)
                 , __('Widget will allow setting this language as user default', TRANSPOSH_TEXT_DOMAIN));
 
-        $this->checkbox($this->transposh->options->widget_remove_logo_o, __('Remove transposh logo (see <a href="http://transposh.org/logoterms">terms</a>)', TRANSPOSH_TEXT_DOMAIN)
+        $this->checkbox($this->transposh->options->widget_remove_logo_o, __('Remove transposh logo (see <a href="https://transposh.org/logoterms">terms</a>)', TRANSPOSH_TEXT_DOMAIN)
                 , __('Transposh logo will not appear on widget', TRANSPOSH_TEXT_DOMAIN));
         $this->select($this->transposh->options->widget_theme_o, __('Edit interface theme:', TRANSPOSH_TEXT_DOMAIN), __('Edit interface (and progress bar) theme:', TRANSPOSH_TEXT_DOMAIN), transposh_consts::$jqueryui_themes, false);
         $this->sectionstop();
@@ -1186,7 +1186,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function on_sidebox_news_content() {
         echo '<div style="margin:6px">';
-        wp_widget_rss_output('http://feeds2.feedburner.com/transposh', array('items' => 5));
+        // this fork's own release notes; the legacy transposh feedburner feed has been dead for years
+        $feed = defined('TRANSPOSH_FORK_NEWS_FEED') ? TRANSPOSH_FORK_NEWS_FEED : 'https://github.com/supermimai/transposh-obviousidea/releases.atom';
+        wp_widget_rss_output($feed, array('items' => 5, 'show_date' => 1, 'show_author' => 0, 'show_summary' => 1));
         echo '</div>';
     }
 
