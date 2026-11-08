@@ -204,7 +204,11 @@ class transposh_plugin_admin {
                 $this->transposh->options->enable_url_translate = TP_FROM_POST;
                 $this->transposh->options->dont_add_rel_alternate = TP_FROM_POST;
                 $this->transposh->options->full_rel_alternate = TP_FROM_POST;
-                $this->transposh->options->protected_terms = TP_FROM_POST;
+                // protected_terms belongs to its own tab; assigning it here silently
+                // wiped the list whenever the Advanced tab was saved without that field
+                if (isset($_POST['protected_terms'])) {
+                    $this->transposh->options->protected_terms = TP_FROM_POST;
+                }
 
                 $this->transposh->options->jqueryui_override = TP_FROM_POST;
                 $this->transposh->options->parser_dont_break_puncts = TP_FROM_POST;

@@ -65,7 +65,8 @@ class transposh_translate
     public static function getProtectedTerms(): array {
         global $my_transposh_plugin;
 
-        $raw_terms = preg_split('/\R+/', (string) $my_transposh_plugin->options->protected_terms);
+        // the UI example asks for comma separated terms; legacy stored lists are newline separated
+        $raw_terms = preg_split('/[\R,]+/', (string) $my_transposh_plugin->options->protected_terms);
         $terms = array();
         foreach ($raw_terms as $term) {
             $term = trim((string) $term);
