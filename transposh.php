@@ -1708,6 +1708,13 @@ class transposh_plugin {
 
 $my_transposh_plugin = new transposh_plugin();
 
+// Plugin files are included from wp-settings.php; when that include happens inside a
+// function scope (WP-CLI bootstrap) the instance would only be a local there. Publish
+// it so class methods using `global $my_transposh_plugin` work in every context.
+if (!isset($GLOBALS['my_transposh_plugin'])) {
+    $GLOBALS['my_transposh_plugin'] = $my_transposh_plugin;
+}
+
 // some global functions for programmers
 
 /**

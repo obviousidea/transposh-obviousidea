@@ -307,13 +307,15 @@ class transposh_database {
 
     /** Drop the cached SEO status so hreflang/sitemap/noindex recompute right after a dictionary change. */
     function invalidate_seo_status($lang, $was = null) {
-        delete_transient($this->seo_status_key($lang));
         if ($was === null) {
-            $was = get_transient($this->seo_status_key($lang)); // fallback: cached previous status, if any
+            // fallback: the cached previous status, reading it BEFORE the delete
+            $was = get_transient($this->seo_status_key($lang));
             if ($was === false) {
+                delete_transient($this->seo_status_key($lang));
                 return;
             }
         }
+        delete_transient($this->seo_status_key($lang));
         if ((bool) $was !== $this->language_has_translations($lang)) {
             // the hreflang/sitemap alternate set changes on pages of EVERY language
             do_action('transposh_language_seo_status_changed', $lang);
@@ -1182,6 +1184,13 @@ class transposh_database {
         // clean duplication in the translation table (don't know how it ever happened...)
         $deduptargets = ['original', 'translated'];
         $dedup_changed = array();
+        // SEO status of every active language before the dedup (it may delete last rows)
+        $dedup_seo_before = array();
+        foreach (array_map('trim', explode(',', (string) $this->transposh->options->viewable_languages)) as $seo_lang) {
+            if ($seo_lang !== '' && !$this->transposh->options->is_default_language($seo_lang)) {
+                $dedup_seo_before[$seo_lang] = $this->language_has_translations($seo_lang);
+            }
+        }
         foreach ($deduptargets as $target) {
             $dedup = 'SELECT * , count( * )' .
                     ' FROM ' . $this->translation_table .
@@ -1209,6 +1218,13 @@ class transposh_database {
             // then a SINGLE consolidated notification
             $this->cache_clean(true);
             do_action('transposh_translations_changed', array_keys($dedup_changed));
+            // a dedup can drop a language below the SEO threshold: pages of EVERY
+            // language carry the hreflang set, so a flip must force a full purge
+            foreach ($dedup_seo_before as $seo_lang => $seo_was) {
+                if ($seo_was !== $this->language_has_translations($seo_lang)) {
+                    do_action('transposh_language_seo_status_changed', $seo_lang);
+                }
+            }
         }
     }
 
