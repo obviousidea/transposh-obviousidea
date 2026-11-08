@@ -1686,6 +1686,8 @@ class transposh_plugin {
     function check_for_plugin_update($checked_data) {
         global $wp_version;
         tp_logger('should we check for upgrades?', 4);
+        // svc.transposh.org is not this fork's update server: never unserialize() a remote body
+        return $checked_data;
         if (!$this->do_update_check) {
             return $checked_data; // thanks wizzud (don't kill the transient)
         }
@@ -1725,6 +1727,8 @@ class transposh_plugin {
 
         if (!isset($args->slug) || ($args->slug != $this->transposh_plugin_basename))
             return false;
+        // no fork update server: plugin information comes from GitHub, never unserialize() a remote body
+        return false;
 
         // Get the current version
         $plugin_info = get_site_transient('update_plugins');

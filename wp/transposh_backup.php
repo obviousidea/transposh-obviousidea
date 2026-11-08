@@ -36,6 +36,9 @@ class transposh_backup {
     }
 
     function do_backup() {
+        // the upstream svc.transposh.org backup service is not operated for this fork
+        echo '500 - The upstream backup service is not operated for this fork; back up the translations table with your own database backup.';
+        return;
         $body = $this->init_body();
         //Check if there are thing to backup, before even accessing the service
         $rowstosend = $this->transposh->database->get_all_human_translation_history('null', 1);
@@ -111,6 +114,8 @@ class transposh_backup {
     }
 
     function do_restore() {
+        echo '500 - The upstream restore service is not operated for this fork; restore the translations table from your own database backup.';
+        exit;
         $body['to'] = time(); //TODO: fix this to get from DB
         $body['home_url'] = $this->transposh->home_url;
         $body['key'] = $this->transposh->options->transposh_key;

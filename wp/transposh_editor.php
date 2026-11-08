@@ -88,10 +88,10 @@ class transposh_editor_table extends WP_List_Table {
 
     function get_column_filter($remove = "") {
         $filter = "";
-        foreach (["fts", "fl", "lang"] as $curfilt) {
+        foreach (["fts", "fl", "ftb"] as $curfilt) {
             if ($remove != $curfilt && filter_input(INPUT_GET, $curfilt, FILTER_DEFAULT, FILTER_NULL_ON_FAILURE) !== false) {
                 $filter .= "&";
-                $filter .= "$curfilt=" . filter_input(INPUT_GET, $curfilt);
+                $filter .= "$curfilt=" . rawurlencode((string) filter_input(INPUT_GET, $curfilt));
             }
         }
         return $filter;
@@ -102,23 +102,23 @@ class transposh_editor_table extends WP_List_Table {
         if (filter_input(INPUT_GET, 'fl', FILTER_DEFAULT, FILTER_NULL_ON_FAILURE)) {
             $filter = sprintf('<a href="?page=%s&action=%s%s">' . __('Remove filter') . '</a>', filter_input(INPUT_GET, "page"), 'filter-by', $this->get_column_filter('fl'));
         } else {
-            $filter = sprintf('<a href="?page=%s&action=%s&fl=%s%s">' . __('Filter') . '</a>', filter_input(INPUT_GET, "page"), 'filter-by', $item['lang'], $this->get_column_filter('fl'));
+            $filter = sprintf('<a href="?page=%s&action=%s&fl=%s%s">' . __('Filter') . '</a>', esc_attr((string) filter_input(INPUT_GET, "page")), 'filter-by', rawurlencode($item['lang']), $this->get_column_filter('fl'));
         }
         $actions = ['filter' => $filter];
         return sprintf('%1$s %2$s', transposh_consts::get_language_name($item['lang']), $this->row_actions($actions));
     }
 
     function column_original($item) {
-        $actions = ['delete' => sprintf('<a href="?page=%s&action=%s&key=%s&_wpnonce=%s">' . __('Delete') . '</a>', filter_input(INPUT_GET, "page"), 'delete', $this->item_key($item), wp_create_nonce('tp_del_translation'))];
+        $actions = ['delete' => sprintf('<a href="?page=%s&action=%s&key=%s&_wpnonce=%s">' . __('Delete') . '</a>', esc_attr((string) filter_input(INPUT_GET, "page")), 'delete', rawurlencode($this->item_key($item)), wp_create_nonce('tp_del_translation'))];
         return sprintf('%1$s %2$s', htmlspecialchars(htmlspecialchars_decode($item['original'])), $this->row_actions($actions));
     }
 
     function column_translated($item) {
         if (transposh_consts::is_language_rtl($item['lang'])) {
-            return sprintf('<span dir="rtl" style="float:right">%1$s</span>', $item['translated']);
+            return sprintf('<span dir="rtl" style="float:right">%1$s</span>', esc_html(htmlspecialchars_decode((string) $item['translated'])));
         }
 
-        return $item['translated'];
+        return esc_html(htmlspecialchars_decode((string) $item['translated']));
     }
 
     function column_translated_by($item) {
@@ -128,14 +128,14 @@ class transposh_editor_table extends WP_List_Table {
         if (filter_input(INPUT_GET, 'ftb', FILTER_DEFAULT, FILTER_NULL_ON_FAILURE)) {
             $filter = sprintf('<a href="?page=%s&action=%s%s">' . __('Remove filter') . '</a>', filter_input(INPUT_GET, "page"), 'filter-by', $this->get_column_filter('ftb'));
         } else {
-            $filter = sprintf('<a href="?page=%s&action=%s&ftb=%s%s">' . __('Filter') . '</a>', filter_input(INPUT_GET, "page"), 'filter-by', $item['translated_by'], $this->get_column_filter('ftb'));
+            $filter = sprintf('<a href="?page=%s&action=%s&ftb=%s%s">' . __('Filter') . '</a>', esc_attr((string) filter_input(INPUT_GET, "page")), 'filter-by', rawurlencode($item['translated_by']), $this->get_column_filter('ftb'));
         }
 
         $actions = [
             // 'edit' => sprintf('<a href="?page=%s&action=%s&book=%s">Edit</a>', $_REQUEST['page'], 'edit', 1/*$item['ID']*/),
             'filter' => $filter,
         ];
-        return sprintf('%1$s %2$s', $by, $this->row_actions($actions));
+        return sprintf('%1$s %2$s', esc_html($by), $this->row_actions($actions));
     }
 
     function extra_tablenav($which) {
@@ -205,7 +205,7 @@ class transposh_editor_table extends WP_List_Table {
     }
 
     function render_table() {
-        echo '</pre><div class="wrap"><h2>' . __('Translations', TRANSPOSH_TEXT_DOMAIN) . '</h2>';
+        echo '<div class="wrap"><h2>' . __('Translations', TRANSPOSH_TEXT_DOMAIN) . '</h2>';
         $this->prepare_items();
         if ($this->filter) {
             $current_url = set_url_scheme('http://' . transposh_utils::get_clean_server_var('HTTP_HOST') . transposh_utils::get_clean_server_var('REQUEST_URI'));
