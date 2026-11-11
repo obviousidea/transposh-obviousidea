@@ -4,7 +4,7 @@
   "site": "https://www2.obviousidea.com",
   "installed_files_verified": 356,
   "php_parsed": 29,
-  "zip_sha256": "8407b91537f0738bafe32bc77b9f1a128c52ece7cfb208212aa17db54d1e26d0",
+  "zip_sha256": "5124abfbbae4f9ec4d987b27ecff764188dc5c355d4d1aeb6baa0286911032b5",
   "isolated_php": {
     "assertions": 193,
     "passed": 193,
@@ -72,5 +72,14 @@
   "temporary_tools_disabled": true,
   "live_cloudflare_purge_tested": false,
   "production_contacted": false,
-  "production_modified": false
+  "production_modified": false,
+  "initial_functional_test_zip_sha256": "8407b91537f0738bafe32bc77b9f1a128c52ece7cfb208212aa17db54d1e26d0",
+  "documentation_only_repack": {
+    "changed_files": [
+      "readme.txt"
+    ],
+    "unchanged_runtime_files": 355,
+    "final_installed_hashes_verified": 356,
+    "final_smoke_pages": 3
+  }
 }

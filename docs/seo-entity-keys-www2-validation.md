@@ -11,9 +11,13 @@ No release or tag was published.
 
 - Previous mirror version: 2026.11.3, backed up before replacement.
 - Installed candidate ZIP SHA-256:
-  `8407b91537f0738bafe32bc77b9f1a128c52ece7cfb208212aa17db54d1e26d0`.
+  `5124abfbbae4f9ec4d987b27ecff764188dc5c355d4d1aeb6baa0286911032b5`.
 - All **356 installed file hashes** match the build manifest; **29 PHP files**
   parsed before installation. Runtime and plugin metadata both report 2026.11.4-rc1.
+- The final ZIP corrects only readme.txt after the functional campaign. Its
+  other 355 files are byte-identical to the tested ZIP. It was redeployed after
+  another backup, all 356 hashes and 29 PHP parses were rechecked, and three real
+  translated pages passed a final metadata smoke check.
 - WordPress 7.1.4, PHP web 8.3.36, WP Rocket 3.24.
 - Transposh settings hash is unchanged. The mirror's existing Cloudflare
   shared-zone guard remained active and unchanged throughout.
