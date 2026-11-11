@@ -57,8 +57,9 @@ This fork is used and tested on real websites, including production-oriented val
 
 The unreleased [SEO phrase-key correction](docs/seo-entity-keys.md) fixes
 HTML-encoded quotes that could prevent existing translations from appearing in
-titles and metadata. It includes isolated regressions and records the remaining
-www2 integration checks before packaging.
+titles and metadata. Candidate **2026.11.4-rc1** includes isolated regressions and has been
+[validated on www2](docs/seo-entity-keys-www2-validation.md), including six-language
+WP Rocket invalidation. It is not deployed to production or published as a release.
 
 ## Installation
 

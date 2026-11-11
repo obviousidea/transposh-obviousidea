@@ -1,8 +1,9 @@
 # SEO phrase keys: quote/entity normalization (candidate)
 
 Status: prepared on `fix/seo-phrase-entity-keys`, based on master `b0bee01`.
-This is an unreleased source change. Plugin version remains 2026.11.3.
-No installation on www or www2 is included.
+This is an unreleased candidate, version **2026.11.4-rc1**, installed and validated
+on www2 only. No production installation or release is included.
+See the [www2 integration report](seo-entity-keys-www2-validation.md).
 
 ## Problem and resulting behavior
 
@@ -20,8 +21,9 @@ handling is preserved so literal entity text is not interpreted as a real quote.
 prefetch, translation writes, history lookup/deletion and human alternatives use
 the same helper in `wp/transposh_db.php`. SQL escaping remains at the call sites and cache key contracts are preserved. The parser, page-cache hooks, redirect policy and sitemap code are unchanged.
 
-Raw apostrophes, decimal/hex quote entities and `&apos;` now address the same
-dictionary entry. Raw/encoded equivalent saves remain no-ops, machine writes
+Equivalent parser/HTML apostrophe representations now address the same
+dictionary entry when they form the same phrase unit. Browser-decoded editor
+tokens retain their literal-text contract. Unchanged editor saves remain no-ops, machine writes
 cannot replace an existing human translation, and changed entries still clear
 request memory/dictionary cache and notify language invalidation.
 
@@ -65,22 +67,26 @@ rendering; one-query batched prefetch and memoization; SQL failure retry;
 write/no-op/duplicate-batch/invalidation behavior and automatic-vs-human protection.
 
 Existing dictionary-cache, parser-fragment and no-op fixtures are also run in the
-isolated bootstrap. SQL and cache backends are test doubles. These results do not
-claim a real MySQL, WordPress integration, shared-phrase WP Rocket purge or
-Cloudflare purge test of the new candidate.
+isolated bootstrap. SQL and cache backends are test doubles. The separate [www2 report](seo-entity-keys-www2-validation.md) covers real
+WordPress/MySQL history and shared-phrase WP Rocket invalidation. No live
+Cloudflare purge is claimed.
 
-## Before a stable release
+## Integration completed; remaining release gates
 
-1. Install a separately identified candidate on www2 only, after a plugin backup.
-2. Reconcile the six quote-key companions with the selected human wording.
-3. Confirm title/description/DC/Open Graph/Twitter output on EN/FR/DE and the
-   other enabled languages, anonymous and with the consent-cookie variant.
-4. Correct a shared phrase, confirm invalidation on every affected page and
-   rerender both raw/encoded occurrences. Repeat an identical save to check no-op.
-5. Exercise quoted history entries and human alternative lookup in the browser.
-6. Check the existing SEOPress sitemaps, canonicals, hreflang and redirects.
-7. Review the PR and assign a new YYYY.MM.build version only for an approved
-   package/release. Do not overwrite the public 2026.11.3 ZIP or tag.
+1. Completed: candidate installed on www2 after a full plugin backup.
+2. Completed on www2: chosen canonical title wording saved through the normal editor.
+   Still required for production: review canonical/alias companions before rollout.
+3. Completed: native title/description/DC, language, canonical and unchanged hreflang
+   output checked on seven languages and both consent variants. The mirror does
+   not emit social tags; those remain isolated-parser coverage.
+4. Completed: six-language shared-phrase invalidation, physical cache snapshots
+   and identical-save no-op checks. Existing entity segmentation is documented.
+5. Completed: real database history and human alternatives through the same
+   backend methods used by the editor. No separate browser UI test is claimed.
+6. Completed: sitemap URL-set equivalence and temporary-tool cleanup.
+7. Review and merge the PR before assigning a stable YYYY.MM.build package/release.
+   Do not overwrite the public 2026.11.3 ZIP or tag. Production deployment still
+   requires its own authorized backup and post-installation checks.
 
 ## Draft release note
 

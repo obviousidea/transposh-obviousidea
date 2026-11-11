@@ -1,0 +1,76 @@
+{
+  "candidate": "2026.11.4-rc1",
+  "date": "2026-11-11",
+  "site": "https://www2.obviousidea.com",
+  "installed_files_verified": 356,
+  "php_parsed": 29,
+  "zip_sha256": "8407b91537f0738bafe32bc77b9f1a128c52ece7cfb208212aa17db54d1e26d0",
+  "isolated_php": {
+    "assertions": 193,
+    "passed": 193,
+    "baseline_failed": 88
+  },
+  "primary_page_public": {
+    "responses": 84,
+    "checks": 1008,
+    "failures": [],
+    "english_sources_unchanged": true,
+    "social_tags_not_emitted_on_mirror": true,
+    "edge_statuses": [
+      "DYNAMIC"
+    ]
+  },
+  "shared_cache": {
+    "languages": [
+      "fr",
+      "de",
+      "es",
+      "it",
+      "pt",
+      "pl"
+    ],
+    "shared_pages_per_language": 2,
+    "file_purge_matrix": [
+      {
+        "lang": "fr",
+        "before": 8,
+        "after": 0
+      },
+      {
+        "lang": "de",
+        "before": 8,
+        "after": 0
+      },
+      {
+        "lang": "es",
+        "before": 8,
+        "after": 0
+      },
+      {
+        "lang": "it",
+        "before": 8,
+        "after": 0
+      },
+      {
+        "lang": "pt",
+        "before": 8,
+        "after": 0
+      },
+      {
+        "lang": "pl",
+        "before": 8,
+        "after": 0
+      }
+    ],
+    "other_languages_unchanged": true,
+    "identical_saves_noop": true,
+    "history_and_alternatives": true
+  },
+  "sitemap_urls": 1179,
+  "sitemap_url_set_unchanged": true,
+  "settings_unchanged": true,
+  "temporary_tools_disabled": true,
+  "live_cloudflare_purge_tested": false,
+  "production_contacted": false,
+  "production_modified": false
+}
