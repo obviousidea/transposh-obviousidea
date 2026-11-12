@@ -614,7 +614,7 @@ class tp_parser {
 
         // Meta content (keywords, description) are also good places to translate (but not in robots... or http-equiv)
         if ($node->tag == 'meta' && $node->content && ($node->name != 'robots') && ($node->name != 'viewport') && ($node->{'http-equiv'} != 'Content-Type')
-                && !in_array($node->property, array('og:url', 'og:type', 'og:image', 'og:locale'), true) && !in_array($node->name, array('theme-color', 'google-site-verification', 'msvalidate.01', 'twitter:card', 'twitter:image'), true)) {
+                && !in_array($node->property, array('og:url', 'og:type', 'og:image', 'og:locale', 'og:locale:alternate'), true) && !in_array($node->name, array('theme-color', 'google-site-verification', 'msvalidate.01', 'twitter:card', 'twitter:image'), true)) {
             $this->parsetext($node->content);
         }
 
@@ -791,6 +791,19 @@ class tp_parser {
                 if (strcasecmp($e->rel, 'alternate') == 0 || strcasecmp($e->rel, 'canonical') == 0) {
                     if (!$e->hreflang) {
                         $e->href = call_user_func_array($this->url_rewrite_func, array($e->href));
+                    }
+                }
+            }
+            // Locale identifiers are metadata, never dictionary phrases. Reuse the
+            // registry, site overrides and tp_language_locale. Preserve alternates.
+            // Unknown or non-territorial values fail closed.
+            if ($this->lang) {
+                $locale = transposh_consts::get_language_locale($this->lang);
+                if (is_string($locale) && preg_match('/^[a-z]{2,3}[_-][a-z]{2}$/iD', $locale)) {
+                    list($language, $territory) = preg_split('/[_-]/', $locale);
+                    $locale = strtolower($language) . '_' . strtoupper($territory);
+                    foreach ($this->html->find('meta[property=og:locale]') as $e) {
+                        $e->content = $locale;
                     }
                 }
             }
