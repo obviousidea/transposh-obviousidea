@@ -339,6 +339,25 @@ class transposh_database {
     }
 
     /**
+     * Normalize one original phrase to its HTML-encoded storage representation.
+     *
+     * Parser input is HTML; editor/history tokens have already been decoded by
+     * the browser. Decode quotes only for HTML input, or literal entity text from
+     * the editor would be confused with a real quote. Preserve the editor's
+     * existing ENT_NOQUOTES handling of non-quote entities.
+     *
+     * Decode once only, then use the existing HTML401 spelling (&#039;). SQL
+     * escaping belongs to callers, after this shared representation is formed.
+     */
+    private function normalize_original($original, $html_input = true) {
+        return htmlspecialchars(
+            html_entity_decode((string) $original, $html_input ? ENT_QUOTES | ENT_HTML5 : ENT_NOQUOTES, 'UTF-8'),
+            ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML401,
+            'UTF-8'
+        );
+    }
+
+    /**
      * Allow fetching of multiple translation requests from the database with a single query
      * @param array $originals keys hold the strings...
      * @param string $lang
@@ -354,7 +373,7 @@ class transposh_database {
             // Accept lists too for existing callers of this public method.
             $original = $value === true ? (string) $key : $value;
             if (!is_string($original) && !is_numeric($original)) { continue; }
-            $original = esc_sql(htmlspecialchars(html_entity_decode((string)$original, ENT_NOQUOTES, 'UTF-8')));
+            $original = esc_sql($this->normalize_original($original));
             if (isset($this->translations[$lang]) && array_key_exists($original, $this->translations[$lang])) {
                 continue;
             }
@@ -402,7 +421,7 @@ class transposh_database {
         //The original is saved in db in its escaped form
         // This should fix a long standing bug with html entities
         //$original = esc_sql(html_entity_decode($orig, ENT_NOQUOTES, 'UTF-8'));
-        $original = esc_sql(htmlspecialchars(html_entity_decode($orig, ENT_NOQUOTES, 'UTF-8')));
+        $original = esc_sql($this->normalize_original($orig));
         // Rendering can ask for the same phrase many times. Keep both positive
         // lookups and actual SQL misses in this request's language-specific map.
         if (isset($this->translations[$lang]) && array_key_exists($original, $this->translations[$lang])) {
@@ -540,7 +559,8 @@ class transposh_database {
                 $orig = stripslashes($_POST["tk$i"]);
                 // The original content is encoded as base64 before it is sent (i.e. token), after we
                 // decode it should just the same after it was parsed.
-                $original = esc_sql(htmlspecialchars(html_entity_decode($orig, ENT_NOQUOTES, 'UTF-8')));
+                $original_html = $this->normalize_original($orig, false);
+                $original = esc_sql($original_html);
             } else {
                 tp_logger("Warning missing original for item $i", 1);
                 continue; // skip items with no original
@@ -591,7 +611,7 @@ class transposh_database {
             }
 
             //Here we check we are not redoing stuff - and avoid escaping twice!!
-            list($old_source, $translated_text) = $this->fetch_translation($orig, $lang);
+            list($old_source, $translated_text) = $this->fetch_translation($original_html, $lang);
             if ($translated_text) {
                 if ($source > 0) {
                     tp_logger("Warning auto-translation for already translated: $original $lang, $old_source - $translated_text", 1);
@@ -725,7 +745,7 @@ class transposh_database {
 
         // The original content is encoded as base64 before it is sent (i.e. token), after we
         // decode it should just the same after it was parsed.
-        $original = esc_sql(htmlspecialchars(html_entity_decode($token, ENT_NOQUOTES, 'UTF-8')));
+        $original = esc_sql($this->normalize_original($token, false));
 
         // add our own custom header - so we will know that we got here
         header('Transposh: v-' . TRANSPOSH_PLUGIN_VER . ' db_version-' . DB_VERSION);
@@ -763,7 +783,7 @@ class transposh_database {
     //TODO: post this action to backup
     function del_translation_history($token, $langp, $timestampp) {
         // $original = transposh_utils::base64_url_decode($token);
-        $original = esc_sql(htmlspecialchars(html_entity_decode($token, ENT_NOQUOTES, 'UTF-8')));
+        $original = esc_sql($this->normalize_original($token, false));
         $lang = esc_sql($langp);
         $timestamp = esc_sql($timestampp);
         // deleting the last translation can flip the language's SEO status back:
@@ -873,7 +893,7 @@ class transposh_database {
         // The original content is encoded as base64 before it is sent (i.e. token), after we
         // decode it should just the same after it was parsed.
         // TODO - check if needed later
-        $original = esc_sql(html_entity_decode($original, ENT_NOQUOTES, 'UTF-8'));
+        $original = esc_sql($this->normalize_original($original, false));
 
         // add our own custom header - so we will know that we got here
         // TODO - move to ajax file?

@@ -53,6 +53,15 @@ This fork is used and tested on real websites, including production-oriented val
 - [ObviousIdea](https://www.obviousidea.com/)
 - [Light in the Eye](https://lightintheeye.com/en/)
 
+## ObviousIdea 2026.11.4: SEO translation keys
+
+[Release notes](docs/release-2026.11.4.md) describe the fix for HTML-encoded
+quotes that could prevent existing translations from appearing in SEO titles
+and descriptions. The candidate was [validated on www2](docs/seo-entity-keys-www2-validation.md),
+including six-language WP Rocket invalidation and sitemap preservation.
+Production installation requires a separate backup and canonical/alias review;
+translations are database content and are not bundled in the installable ZIP.
+
 ## Installation
 
 ### ObviousIdea 1.0.15: WP Rocket and dictionary caching
