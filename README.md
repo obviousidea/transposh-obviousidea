@@ -53,13 +53,14 @@ This fork is used and tested on real websites, including production-oriented val
 - [ObviousIdea](https://www.obviousidea.com/)
 - [Light in the Eye](https://lightintheeye.com/en/)
 
-## Development candidate: SEO entity keys
+## ObviousIdea 2026.11.4: SEO translation keys
 
-The unreleased [SEO phrase-key correction](docs/seo-entity-keys.md) fixes
-HTML-encoded quotes that could prevent existing translations from appearing in
-titles and metadata. Candidate **2026.11.4-rc1** includes isolated regressions and has been
-[validated on www2](docs/seo-entity-keys-www2-validation.md), including six-language
-WP Rocket invalidation. It is not deployed to production or published as a release.
+[Release notes](docs/release-2026.11.4.md) describe the fix for HTML-encoded
+quotes that could prevent existing translations from appearing in SEO titles
+and descriptions. The candidate was [validated on www2](docs/seo-entity-keys-www2-validation.md),
+including six-language WP Rocket invalidation and sitemap preservation.
+Production installation requires a separate backup and canonical/alias review;
+translations are database content and are not bundled in the installable ZIP.
 
 ## Installation
 
@@ -124,8 +125,8 @@ You can find them on our site [here](https://transposh.org/faq)
 - Russian - Romans Matusevics
 - Serbian - [Borisa Djuraskovic]
 - Spanish - [Angel Torregrosa](http://wordp.relatividad.org), [Ignacio](http://colnect.com/es/collectors/collector/iflvico)
-- Turkish - [Ã–mer Faruk Karabulut](http://yakalasam.com/) and [Semih YeÅŸilyurt](http://kingdroid.net)
-- French - [Michel ChaussÃ©e](http://tajimoko.com)
+- Turkish - [Ömer Faruk Karabulut](http://yakalasam.com/) and [Semih Yeşilyurt](http://kingdroid.net)
+- French - [Michel Chaussée](http://tajimoko.com)
 
 ## Changelog
 
@@ -543,7 +544,7 @@ You can find them on our site [here](https://transposh.org/faq)
 - Bing have added two languages
 - Better handling of &nbsp; (We breaked when this is a no_break), and we also eliminate the utf ones (hidden from sight anyhow)
 - Fix the bug reported by dserber disallowing language selection on post where translate_on_publish was disabled
-- Update for .po files, Turkish Translation by [Ã–mer Faruk Karabulut](http://yakalasam.com/)
+- Update for .po files, Turkish Translation by [Ömer Faruk Karabulut](http://yakalasam.com/)
 </details>
 
 <details>
@@ -648,7 +649,7 @@ You can find them on our site [here](https://transposh.org/faq)
 - Enable live human translations backup by default
 - Lists of languages used in Javascript are fixed and more readable
 - Improved loading for backend javascripts
-- Support the ï¼Œ symbol in parsing
+- Support the ， symbol in parsing
 - Reintroduce CORS support in our AJAX (Cross Origin Ajax)
 - Try to make sure lazyloader loads in the correct context
 - Fix calculation of batch translation size to avoid translations too large for Google
@@ -679,7 +680,7 @@ You can find them on our site [here](https://transposh.org/faq)
 - Better 404 page handling (don't create new links to non-existing pages)
 - Fix caching on rackspace cloudsites
 - Many more minor fixes
-- Turkish Translation by [Semih YeÅŸilyurt](http://kingdroid.net)
+- Turkish Translation by [Semih Yeşilyurt](http://kingdroid.net)
 - Help us more (We will get ~1 promile of your adsense income, thanks!)
 - Ajax is now performed through the wp-admin ajax interface
 </details>

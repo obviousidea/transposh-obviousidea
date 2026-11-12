@@ -1,8 +1,10 @@
 # SEO phrase keys: quote/entity normalization (candidate)
 
 Status: prepared on `fix/seo-phrase-entity-keys`, based on master `b0bee01`.
-This is an unreleased candidate, version **2026.11.4-rc1**, installed and validated
-on www2 only. No production installation or release is included.
+The **2026.11.4-rc1** candidate was installed and validated on www2.
+The stable **2026.11.4** package promotes that runtime change with version metadata
+updated; see [release notes](release-2026.11.4.md). Production installation is a
+separate backup, data reconciliation and verification step.
 See the [www2 integration report](seo-entity-keys-www2-validation.md).
 
 ## Problem and resulting behavior
