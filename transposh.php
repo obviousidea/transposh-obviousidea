@@ -5,7 +5,7 @@
   Plugin URI: https://github.com/supermimai/transposh-obviousidea
   Description: Translation filter for WordPress. ObviousIdea fork, based on <a href="https://transposh.org/">Transposh</a> by Team Transposh. Configure languages on the <a href="admin.php?page=tp_main">settings page</a>. Development and issues: <a href="https://github.com/supermimai/transposh-obviousidea">GitHub</a>.
   Author: Team Transposh and ObviousIdea
-  Version: 2026.11.6
+  Version: 2026.11.7
   Author URI: https://github.com/supermimai/transposh-obviousidea
   License: GPL (https://www.gnu.org/licenses/gpl.txt)
   Text Domain: transposh
@@ -13,7 +13,7 @@
  */
 
 /*
- * Transposh v2026.11.6
+ * Transposh v2026.11.7
  * https://transposh.org/
  *
  * Copyright %YEAR%, Team Transposh
@@ -43,6 +43,7 @@ require_once("wp/transposh_postpublish.php");
 require_once("wp/transposh_backup.php");
 require_once("wp/transposh_3rdparty.php");
 require_once("wp/transposh_mail.php");
+require_once("wp/transposh_engine_monitor.php");
 //require_once("wp/transposh_wpmenu.php");
 
 /**
@@ -71,6 +72,9 @@ class transposh_plugin {
 
     /** @var transposh_mail Mail element */
     private $mail;
+
+    /** @var transposh_engine_monitor Machine translation counters, failure alerts */
+    public $engine_monitor;
 
     // list of properties
     /** @var string The site url */
@@ -132,6 +136,7 @@ class transposh_plugin {
         $this->postpublish = new transposh_postpublish($this);
         $this->third_party = new transposh_3rdparty($this);
         $this->mail = new transposh_mail($this);
+        $this->engine_monitor = new transposh_engine_monitor($this);
 
         // initialize logger
         if ($this->options->debug_enable) {
@@ -774,6 +779,7 @@ class transposh_plugin {
 
         // this handles the permalink rewrite
         $GLOBALS['wp_rewrite']->flush_rules();
+        wp_clear_scheduled_hook('transposh_engine_health_event');
 
         tp_logger("plugin_deactivate exit: " . dirname(__FILE__), 2);
     }
@@ -1557,6 +1563,8 @@ class transposh_plugin {
                 default:
                     die('engine not supported');
             }
+            // counters and failure alerts; never affects the answer below
+            $this->engine_monitor->record_proxy_call($engine, $tl, $q, $result, $suggestmode);
             if ($result === false) {
                 echo 'Proxy attempt failed';
                 die();

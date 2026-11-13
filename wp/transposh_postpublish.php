@@ -366,6 +366,7 @@ class transposh_postpublish {
             $translated = array();
             foreach (array_chunk($q, 25, true) as $chunk) {
                 $out = transposh_translate::get_bing_translation($lang, $sl, array_values($chunk));
+                $this->transposh->engine_monitor->record_rest_call('b', $lang, $chunk, $out);
                 if (!is_array($out) || count($out) !== count($chunk)) {
                     $row['error'] = 'engine failure';
                     break;
