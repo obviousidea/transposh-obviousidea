@@ -45,9 +45,10 @@ $synthetic = <<<'HTML'
 </head><body><p>Body text is collected elsewhere</p></body></html>
 HTML;
 
-function render_requests($html) {
+function render_requests($html, $rules = array(true, true, true)) {
     $asked = array();
     $p = new tp_parser();
+    $p->change_parsing_rules($rules[0], $rules[1], $rules[2]);
     $p->lang = 'fr'; $p->is_auto_translate = false; $p->is_edit_mode = false; $p->allow_ad = false;
     $p->fetch_translate_func = function ($text, $lang) use (&$asked) { $asked[$text] = $text; return array(null, null); };
     $p->url_rewrite_func = function ($url) { return $url; };
@@ -97,13 +98,22 @@ $checks['invalid_jsonld_ignored'] = is_array(transposh_postpublish::extract_head
 // Parity on the synthetic head and on an optional real page
 $fixtures = array('synthetic' => $synthetic) + $fixtures_extra;
 if (!empty($args['fixture'])) { $fixtures['fixture'] = file_get_contents($args['fixture']); }
-foreach ($fixtures as $name => $html) {
-    $asked = render_requests($html);
-    $collected = transposh_postpublish::extract_head_phrases($html);
-    $missing = array_diff_key($asked, $collected);
-    $checks['parity_' . $name . '_' . count($asked) . '_asked'] = count($asked) > 0 && !$missing;
-    if ($missing) { fwrite(STDERR, "[$name] asked at render but not collected:\n  " . implode("\n  ", array_slice($missing, 0, 15)) . "\n"); }
+// Each fixture is checked with default rules and with the "don't break punctuation/numbers/entities"
+// site options (the www2/production setting that made translate-all queue wrongly split keys).
+foreach (array('break' => array(true, true, true), 'nobreak' => array(false, false, false)) as $rname => $rules) {
+    foreach ($fixtures as $name => $html) {
+        $asked = render_requests($html, $rules);
+        $collected = transposh_postpublish::extract_head_phrases($html, $rules);
+        $missing = array_diff_key($asked, $collected);
+        $checks['parity_' . $rname . '_' . $name . '_' . count($asked) . '_asked'] = count($asked) > 0 && !$missing;
+        if ($missing) { fwrite(STDERR, "[$rname/$name] asked at render but not collected:\n  " . implode("\n  ", array_slice($missing, 0, 15)) . "\n"); }
+    }
 }
+// Regression for the www2 finding: with nobreak rules the whole title is one key
+$t = transposh_postpublish::extract_head_phrases('<html><head><title>LrToolbox - restore photos from Lightroom catalog - remove 0 star</title></head></html>', array(false, false, false));
+$checks['nobreak_title_single_key'] = in_array('LrToolbox - restore photos from Lightroom catalog - remove 0 star', $t, true);
+$t = transposh_postpublish::extract_head_phrases('<html><head><title>LrToolbox - restore photos from Lightroom catalog - remove 0 star</title></head></html>');
+$checks['default_rules_split_title'] = in_array('restore photos from Lightroom catalog', $t, true);
 
 $fail = 0;
 foreach ($checks as $k => $ok) { echo ($ok ? 'PASS ' : 'FAIL ') . $k . "\n"; if (!$ok) { $fail++; } }

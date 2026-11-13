@@ -90,7 +90,7 @@ class transposh_postpublish {
         if ($code !== 200) {
             return $none('http_' . $code);
         }
-        $phrases = self::extract_head_phrases(wp_remote_retrieve_body($response));
+        $phrases = self::extract_head_phrases(wp_remote_retrieve_body($response), $this->parsing_rules());
         if ($phrases === null) {
             return $none('no_head');
         }
@@ -103,9 +103,10 @@ class transposh_postpublish {
      * of JSON-LD scripts, same tagging rules for <title>/<meta>/<link title>.
      * Pure function (no WordPress calls) so it can be tested in isolation.
      * @param string $html
+     * @param array $rules array(break_puncts, break_numbers, break_entities), as applied at render
      * @return array|null phrase => phrase, null when the document has no head
      */
-    static function extract_head_phrases($html) {
+    static function extract_head_phrases($html, $rules = array(true, true, true)) {
         if (!is_string($html) || !preg_match('~<head\b[^>]*>(.*?)</head>~is', $html, $m)) {
             return null;
         }
@@ -131,10 +132,20 @@ class transposh_postpublish {
         // <title>, <meta content> and <link title>: reuse the parser's own tagging rules
         $head = preg_replace('~<(script|style|noscript)\b[^>]*>.*?</\1>~is', '', $head);
         $parser = new tp_parser();
+        $parser->change_parsing_rules($rules[0], $rules[1], $rules[2]);
         foreach ($parser->get_phrases_list($head) as $phrase) {
             $phrases[$phrase] = $phrase;
         }
         return $phrases;
+    }
+
+    /**
+     * Phrase-breaking rules used by the page render, see transposh_plugin::process_page()
+     * @return array array(break_puncts, break_numbers, break_entities)
+     */
+    function parsing_rules() {
+        $o = $this->transposh->options;
+        return array(!$o->parser_dont_break_puncts, !$o->parser_dont_break_numbers, !$o->parser_dont_break_entities);
     }
 
     /**
@@ -153,6 +164,11 @@ class transposh_postpublish {
         $excerpt_rss = apply_filters('the_excerpt_rss', $excerpt);
 
         $parser = new tp_parser();
+        // Same phrase-breaking rules as the page render (transposh.php), otherwise the
+        // queued keys differ from the keys looked up when the page is displayed
+        // (e.g. with "don't break punctuation" a title stays one phrase at render).
+        $rules = $this->parsing_rules();
+        $parser->change_parsing_rules($rules[0], $rules[1], $rules[2]);
         $phrases = array_merge($parser->get_phrases_list($content), $parser->get_phrases_list($title),
                 $parser->get_phrases_list($the_content_feed), $parser->get_phrases_list($excerpt),
                 $parser->get_phrases_list($excerpt_rss));
@@ -181,6 +197,19 @@ class transposh_postpublish {
             return new WP_Error('tp_no_post', 'Unknown post', array('status' => 404));
         }
         $samples = min(50, (int) $request['samples']);
+        // diagnostic: ?probe=<text> shows how one phrase is stored and looked up (admin only, read-only)
+        $probe = $request->get_param('probe');
+        if (is_string($probe) && $probe !== '') {
+            global $wpdb;
+            $db = $this->transposh->database;
+            $like = '%' . $wpdb->esc_like(substr($probe, 0, 120)) . '%';
+            $rows = $wpdb->get_results($wpdb->prepare("SELECT original, lang, source, CHAR_LENGTH(original) AS len, HEX(SUBSTRING(original,1,12)) AS hexstart FROM {$wpdb->prefix}" . TRANSLATIONS_TABLE . " WHERE original LIKE %s ORDER BY lang LIMIT 40", $like), ARRAY_A);
+            $lookups = array();
+            foreach (explode(',', $this->transposh->options->viewable_languages) as $lang) {
+                $lookups[$lang] = $db->fetch_translation($probe, $lang);
+            }
+            return rest_ensure_response(array('probe' => $probe, 'rows_like' => $rows, 'fetch_translation' => $lookups));
+        }
         $collected = $this->collect_post_phrases($postID);
         $groups = array('content' => $collected['content'], 'head' => $collected['head']);
         $max = (int) apply_filters('transposh_coverage_max_phrases', 2000);
