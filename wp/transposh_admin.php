@@ -354,7 +354,7 @@ class transposh_plugin_admin {
             '<p>' . __('For further help and assistance, please look at the following resources:', TRANSPOSH_TEXT_DOMAIN) . '</p>' .
             '<a href="https://transposh.org/">' . __('Plugin homepage (upstream)', TRANSPOSH_TEXT_DOMAIN) . '</a><br/>' .
             '<a href="https://transposh.org/faq/">' . __('Frequently asked questions', TRANSPOSH_TEXT_DOMAIN) . '</a><br/>' .
-            '<a href="https://github.com/supermimai/transposh-obviousidea">' . __('Development website (this fork)', TRANSPOSH_TEXT_DOMAIN) . '</a><br/>'
+            '<a href="https://github.com/obviousidea/transposh-obviousidea">' . __('Development website (this fork)', TRANSPOSH_TEXT_DOMAIN) . '</a><br/>'
         ));
         $screen->add_help_tab(array(
             'id' => 'languages', // This should be unique for the screen.
@@ -1107,7 +1107,7 @@ document.addEventListener("DOMContentLoaded", function () {
         echo '<ul style="list-style-type:disc;margin-' . $this->localeleft . ':20px;">';
         echo '<li><a href="https://transposh.org">';
         echo __('Our website', TRANSPOSH_TEXT_DOMAIN);
-        echo '</a></li><li><a href="https://github.com/supermimai/transposh-obviousidea">' . __('This fork (ObviousIdea)', TRANSPOSH_TEXT_DOMAIN) . '</a></li><li><a href="https://blog.transposh.com">';
+        echo '</a></li><li><a href="https://github.com/obviousidea/transposh-obviousidea">' . __('This fork (ObviousIdea)', TRANSPOSH_TEXT_DOMAIN) . '</a></li><li><a href="https://blog.transposh.com">';
         echo __('Our blog', TRANSPOSH_TEXT_DOMAIN);
         echo '</a></li><li><a href="https://twitter.com/transposh">';
         echo __('Our twitter account (feel free to follow!)', TRANSPOSH_TEXT_DOMAIN);
@@ -1141,7 +1141,7 @@ document.addEventListener("DOMContentLoaded", function () {
         echo __('Contact us directly via:', TRANSPOSH_TEXT_DOMAIN);
         echo '<ul style="list-style-type:disc;margin-' . $this->localeleft . ':20px;">';
         echo '<li><a href="https://transposh.org/contact-us/">' . __('Our contact form', TRANSPOSH_TEXT_DOMAIN) . '</a></li>';
-        echo '<li><a href="https://github.com/supermimai/transposh-obviousidea/issues/new">' . __('Suggest a Feature or Report a Bug (this fork)', TRANSPOSH_TEXT_DOMAIN) . '</a></li>';
+        echo '<li><a href="https://github.com/obviousidea/transposh-obviousidea/issues/new">' . __('Suggest a Feature or Report a Bug (this fork)', TRANSPOSH_TEXT_DOMAIN) . '</a></li>';
         echo '<li><a href="https://transposh.org/redir/newticket">' . __('Report a Bug', TRANSPOSH_TEXT_DOMAIN) . '</a></li>';
         echo '</ul>';
 
@@ -1194,7 +1194,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // i did not describe each callback dedicated, what they do can be easily inspected and compare with the admin page displayed
 
     function on_sidebox_news_content() {
-        $repo = defined('TRANSPOSH_FORK_REPO') ? TRANSPOSH_FORK_REPO : 'https://github.com/supermimai/transposh-obviousidea';
+        $repo = defined('TRANSPOSH_FORK_REPO') ? TRANSPOSH_FORK_REPO : 'https://github.com/obviousidea/transposh-obviousidea';
         echo '<div style="margin:6px">';
         echo '<p><strong>' . esc_html__('This is the ObviousIdea fork of Transposh.', TRANSPOSH_TEXT_DOMAIN) . '</strong> '
             . sprintf(
