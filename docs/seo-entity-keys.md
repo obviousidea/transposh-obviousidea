@@ -3,9 +3,9 @@
 Status: prepared on `fix/seo-phrase-entity-keys`, based on master `b0bee01`.
 The **2026.11.4-rc1** candidate was installed and validated on www2.
 The stable **2026.11.4** package promotes that runtime change with version metadata
-updated; see [release notes](release-2026.11.4.md). Production installation is a
+updated; see [release notes](releases/2026.11.4.md). Production installation is a
 separate backup, data reconciliation and verification step.
-See the [www2 integration report](seo-entity-keys-www2-validation.md).
+See the [www2 integration report](validation/seo-entity-keys-www2-validation.md).
 
 ## Problem and resulting behavior
 
@@ -69,7 +69,7 @@ rendering; one-query batched prefetch and memoization; SQL failure retry;
 write/no-op/duplicate-batch/invalidation behavior and automatic-vs-human protection.
 
 Existing dictionary-cache, parser-fragment and no-op fixtures are also run in the
-isolated bootstrap. SQL and cache backends are test doubles. The separate [www2 report](seo-entity-keys-www2-validation.md) covers real
+isolated bootstrap. SQL and cache backends are test doubles. The separate [www2 report](validation/seo-entity-keys-www2-validation.md) covers real
 WordPress/MySQL history and shared-phrase WP Rocket invalidation. No live
 Cloudflare purge is claimed.
 
