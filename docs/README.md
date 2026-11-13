@@ -1,6 +1,7 @@
 # Documentation
 
 ## Use and configure
+- [Engine health](engine-monitoring.md): daily test of the translation engine, counters and e-mail alerts when it fails.
 - [Cloudflare cache purge](cloudflare-cache-invalidation.md): opt-in purge of configured translated URLs after a correction.
 - [SEO phrase keys](seo-entity-keys.md): how quotes and entities are normalised so SEO titles and descriptions find their translation.
 

@@ -708,6 +708,7 @@ Please note that while Transposh currently offers a hosted LibreTranslate servic
 
     function tp_engines() {
         $this->engines_layout_assets();
+        $this->transposh->engine_monitor->render_panel();
         $this->section(__('Automatic Translation Settings', TRANSPOSH_TEXT_DOMAIN));
         $this->checkbox($this->transposh->options->enable_autotranslate_o, __('Enable automatic translation', TRANSPOSH_TEXT_DOMAIN)
                 , __('Allow automatic translation of pages', TRANSPOSH_TEXT_DOMAIN));

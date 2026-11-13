@@ -31,7 +31,19 @@ class transposh_translate
      * @param array $headers Optional headers to set for the request.
      * @return string|false The response from the cURL request, or false on failure.
      */
+    /** @var array|null details of the last failed HTTP request: code, curl (message), body (first 500 chars); null after a success */
+    private static $last_http = null;
+
+    /**
+     * Why the last engine request failed, for the engine health monitor (never contains a key or a header).
+     * @return array|null
+     */
+    public static function get_last_http() {
+        return self::$last_http;
+    }
+
     private static function executeCurlRequest(string $url, array $options = [], array $headers = []): string|false {
+        self::$last_http = null;
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -49,6 +61,7 @@ class transposh_translate
         $response = curl_exec($ch);
         if (curl_errno($ch)) {
             tp_logger('cURL error: ' . curl_error($ch), 1);
+            self::$last_http = array('code' => 0, 'curl' => substr((string) curl_error($ch), 0, 200));
             curl_close($ch);
             return false;
         }
@@ -57,6 +70,7 @@ class transposh_translate
         if ($httpCode !== 200) {
             tp_logger("HTTP error: $httpCode for URL $url", 1);
             tp_logger("Response: $response", 1);
+            self::$last_http = array('code' => (int) $httpCode, 'body' => substr((string) $response, 0, 500));
             return false;
         }
         return $response;
