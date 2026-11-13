@@ -1,6 +1,6 @@
 # SEO head phrases in "Translate all" (candidate 2026.11.6)
 
-Status: branch `feat/seo-meta-phrases-2026.11.6` (local, not pushed). **2026.11.6-rc3 installed on www2 only** (13 November 2026). Production untouched.
+Status: branch `feat/seo-meta-phrases-2026.11.6` (local, not pushed). **Stable 2026.11.6 installed on www2 only** (13 November 2026), see [release notes](release-notes-2026.11.6.md). Production untouched. The sections below keep the rc history that led to it.
 
 ## Root cause found during www2 validation (pre-existing bug, wider than SEO)
 The page render calls `change_parsing_rules(!parser_dont_break_puncts, !parser_dont_break_numbers,

@@ -4,7 +4,7 @@ Donate link: http://transposh.org/donate/
 Tags: translation, translate, i18n, widget, filter, buddypress, bilingual, multilingual, transposh, language, crowdsourcing, google translate, bing translate, context, wiki, RTL, Hebrew, Spanish, French, Russian, English, Arabic, Portuguese
 Requires at least: 5.8
 Tested up to: 7.1.4
-Stable tag: 2026.11.5
+Stable tag: 2026.11.6
 
 Transposh adds best of breed translation support to wordpress, more than a 100 languages are automatically translated and can be manually corrected with ease.
 
@@ -12,6 +12,14 @@ Transposh adds best of breed translation support to wordpress, more than a 100 l
 Transposh translation filter for WordPress offers a unique approach to blog translation. It allows your blog to combine automatic translation with human translation aided by your users with an easy to use in-context interface.
 
 == Changelog ==
+
+= 2026.11.6 =
+* Fix "Translate all" and post-publish translation queuing phrases the page never looks up: they now apply the site's phrase-breaking options (do not break on punctuation, numbers or entities) exactly as the page render does.
+* Collect the SEO head of each post (SEOPress/Yoast title, meta description, Open Graph/Twitter texts, JSON-LD headline/description) so meta descriptions are no longer left in the source language. The collection reports why it failed (protected, not public, HTTP error) instead of returning nothing.
+* Add admin-only REST routes: read-only translation coverage per post and language, server-side machine fill of missing phrases for one post (dry run by default, never replaces a translation), and storing reviewed translations as human translations with before/after values.
+* Technical link labels (Feed, RSD, oEmbed) are no longer sent to translation engines, URLs and phrases without letters are skipped.
+* Translation Engines tab: one field per row, API keys masked with a Show/Hide button.
+* No change to the parser, the dictionary layer, page-cache invalidation, language detection, redirects or the sitemap code. Dictionary translations are site data and are not bundled.
 
 = 2026.11.5 =
 * Correct existing primary Open Graph locales on translated pages using the language registry, site overrides and the existing locale filter.
