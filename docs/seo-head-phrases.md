@@ -1,6 +1,34 @@
 # SEO head phrases in "Translate all" (candidate 2026.11.6)
 
-Status: branch `feat/seo-meta-phrases-2026.11.6`, local only. Not installed on www2 or production.
+Status: branch `feat/seo-meta-phrases-2026.11.6` (local, not pushed). **2026.11.6-rc3 installed on www2 only** (13 November 2026). Production untouched.
+
+## Root cause found during www2 validation (pre-existing bug, wider than SEO)
+The page render calls `change_parsing_rules(!parser_dont_break_puncts, !parser_dont_break_numbers,
+!parser_dont_break_entities)`. "Translate all" and post-publish (`get_post_phrases()`) built a
+default `tp_parser`, which always breaks on punctuation and numbers. With these site options
+enabled (as on www2), the queued keys differed from the keys looked up at render.
+- Proof on www2 (admin-only `?probe=` diagnostic): the stored key is the whole title
+  `LrToolbox - restore photos from Lightroom catalog - remove 0 star` (8 languages). Translate-all
+  would have queued `restore photos from Lightroom catalog`, `remove`, `star` instead.
+  Those translations would have been written but never displayed.
+- This affects **content as well as head phrases**, and has done so since the options were enabled.
+  It partly explains why pages stay untranslated after a "Translate all".
+- Fix (rc3): content and head collection apply the render's rules (`parsing_rules()`).
+  The parity test runs with both rule sets.
+
+## www2 validation (rc1 → rc3)
+- Installed through the mirror-bounded installer snippet 115 (host/path lock, SHA-256 check,
+  PHP token parse, 356 files equal to the build manifest). The snippet was deactivated after each install.
+  The 2026.11.5 backup is kept in the server option and as a local ZIP for restore.
+- LrToolbox EN + 6 languages: HTTP 200, `lang`, title, description, robots (noindex), 10 hreflang,
+  canonical, no Set-Cookie and no redirect. These are **identical before and after** installation (12/12 checks).
+- Collector URL `?tp_head_phrases=1`: HTTP 200, no redirect, not page-cached (no WP Rocket marker
+  on repeat). Anonymous request to the coverage route: refused. Private post: `head_status=not_public`.
+- Coverage of page 5723 in 1.4 s. FR after rc3: content 42/45 translated (the 3 missing are the
+  feed/excerpt variant and an emoji); head 5/13, where the missing items are **exactly the visible English meta
+  description** plus link titles (Feed, oEmbed, RSD) and one URL. This matches what the FR page shows.
+- Not yet done: running "Translate all" itself (needs an admin browser session). Expected result: the
+  description then reaches 0 missing in 6 languages.
 
 ## Problem (measured on production, 13 November 2026)
 `transposh_postpublish::get_post_phrases()` feeds the admin "Translate all" and post-publish
