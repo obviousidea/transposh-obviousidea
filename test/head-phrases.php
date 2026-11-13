@@ -115,6 +115,13 @@ $checks['nobreak_title_single_key'] = in_array('LrToolbox - restore photos from 
 $t = transposh_postpublish::extract_head_phrases('<html><head><title>LrToolbox - restore photos from Lightroom catalog - remove 0 star</title></head></html>');
 $checks['default_rules_split_title'] = in_array('restore photos from Lightroom catalog', $t, true);
 
+// engine filter used by translate-missing
+$checks['engine_skips_url'] = !transposh_postpublish::is_engine_translatable('https://www2.obviousidea.com/windows-software/lrtoolbox/');
+$checks['engine_skips_host_path'] = !transposh_postpublish::is_engine_translatable('www2.obviousidea.com/wp-content/uploads/x.png');
+$checks['engine_skips_emoji'] = !transposh_postpublish::is_engine_translatable("\u{1F609}");
+$checks['engine_keeps_text'] = transposh_postpublish::is_engine_translatable('Works on all major versions of Windows (7 and above');
+$checks['engine_keeps_entities'] = transposh_postpublish::is_engine_translatable('Whether you&#8217;re a photographer');
+
 $fail = 0;
 foreach ($checks as $k => $ok) { echo ($ok ? 'PASS ' : 'FAIL ') . $k . "\n"; if (!$ok) { $fail++; } }
 echo count($checks) - $fail . '/' . count($checks) . " passed\n";

@@ -185,6 +185,148 @@ class transposh_postpublish {
             },
             'args' => array('samples' => array('default' => 10, 'sanitize_callback' => 'absint')),
         ));
+        register_rest_route('transposh/v1', '/translate-missing/(?P<id>\d+)', array(
+            'methods' => 'POST',
+            'callback' => array(&$this, 'rest_translate_missing'),
+            'permission_callback' => function ($request) {
+                return current_user_can('manage_options') && current_user_can('edit_post', (int) $request['id']);
+            },
+        ));
+    }
+
+    /**
+     * Phrases worth sending to a machine engine: not a bare URL, and containing at
+     * least one letter (skips emoji, numbers and URLs collected from link/meta tags).
+     * @param string $phrase
+     * @return boolean
+     */
+    static function is_engine_translatable($phrase) {
+        $text = trim(html_entity_decode((string) $phrase, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        if ($text === '' || preg_match('~^(https?:)?//\S+$~i', $text) || preg_match('~^[\w.-]+\.[a-z]{2,}(/\S*)?$~i', $text)) {
+            return false;
+        }
+        return (bool) preg_match('/\p{L}/u', $text);
+    }
+
+    /**
+     * Server-side equivalent of the admin "translate all" for ONE post: machine-translate
+     * the phrases that have no translation yet, through the configured engine, and store
+     * them with the same path as on-page automatic translation (tp_tp proxy).
+     * Never overwrites an existing (human or automatic) translation.
+     * Body: dry_run (default true), langs (array, default all non-default viewable),
+     *       groups (array of "content"/"head", default both), engine ("b" only), max (default 150 per language)
+     */
+    function rest_translate_missing($request) {
+        $postID = (int) $request['id'];
+        if (!get_post($postID)) {
+            return new WP_Error('tp_no_post', 'Unknown post', array('status' => 404));
+        }
+        $dry_run = $request->get_param('dry_run') !== false && $request->get_param('dry_run') !== 'false' && $request->get_param('dry_run') !== 0;
+        $engine = $request->get_param('engine') ?: 'b';
+        if ($engine !== 'b') {
+            return new WP_Error('tp_engine', 'Only the Microsoft Translator engine (b) is supported here', array('status' => 400));
+        }
+        $max = max(1, min(500, (int) ($request->get_param('max') ?: 150)));
+        $groups = (array) ($request->get_param('groups') ?: array('content', 'head'));
+        $viewable = array_filter(explode(',', $this->transposh->options->viewable_languages), function ($l) {
+            return !$this->transposh->options->is_default_language($l);
+        });
+        $langs = $request->get_param('langs') ? array_values(array_intersect((array) $request->get_param('langs'), $viewable)) : array_values($viewable);
+
+        $collected = $this->collect_post_phrases($postID);
+        $phrases = array();
+        foreach ($groups as $g) {
+            if (isset($collected[$g]) && is_array($collected[$g])) {
+                $phrases += $collected[$g];
+            }
+        }
+        $sl = $this->transposh->options->default_language;
+        $o = $this->transposh->options;
+        $result = array('post' => $postID, 'dry_run' => $dry_run, 'head_status' => $collected['head_status'],
+            // configuration presence only, never the key itself
+            'engine' => array('key_present' => trim((string) (defined('TRANSPOSH_MSN_KEY') ? TRANSPOSH_MSN_KEY : $o->msn_key)) !== '',
+                'region_set' => trim((string) $o->msn_region) !== '', 'curl' => function_exists('curl_init')),
+            'languages' => array());
+        if ($request->get_param('engine_test')) {
+            // one tiny request to the Microsoft endpoint, reporting HTTP status and API error code only
+            $key = trim((string) (defined('TRANSPOSH_MSN_KEY') ? TRANSPOSH_MSN_KEY : $o->msn_key));
+            $endpoint = trim((string) $o->msn_endpoint);
+            if ($endpoint === '' || stripos($endpoint, 'https://') !== 0) {
+                $endpoint = 'https://api.cognitive.microsofttranslator.com';
+            }
+            $headers = array('Content-Type' => 'application/json', 'Ocp-Apim-Subscription-Key' => $key);
+            if (trim((string) $o->msn_region) !== '') {
+                $headers['Ocp-Apim-Subscription-Region'] = trim((string) $o->msn_region);
+            }
+            $r = wp_remote_post(rtrim($endpoint, '/') . '/translate?api-version=3.0&to=fr&from=en',
+                    array('timeout' => 10, 'headers' => $headers, 'body' => wp_json_encode(array(array('Text' => 'Hello')))));
+            $body = is_wp_error($r) ? null : json_decode(wp_remote_retrieve_body($r), true);
+            $result['engine']['test'] = is_wp_error($r) ? array('transport_error' => $r->get_error_code())
+                : array('http' => wp_remote_retrieve_response_code($r), 'endpoint_host' => wp_parse_url($endpoint, PHP_URL_HOST),
+                    'api_error' => $body['error'] ?? null, 'ok' => isset($body[0]['translations'][0]['text']));
+            return rest_ensure_response($result);
+        }
+        foreach ($langs as $lang) {
+            if (!transposh_consts::is_supported_engine($lang, 'b')) {
+                $result['languages'][$lang] = array('skipped' => 'engine does not support language');
+                continue;
+            }
+            $missing = array();
+            foreach ($phrases as $phrase) {
+                $found = $this->transposh->database->fetch_translation($phrase, $lang);
+                if ($found === false) {
+                    continue; // lookup error: never guess
+                }
+                if (!(is_array($found) && $found[1]) && self::is_engine_translatable($phrase)) {
+                    $missing[] = $phrase;
+                }
+            }
+            $row = array('missing' => count($missing), 'requested' => 0, 'stored' => 0, 'pairs' => array());
+            $missing = array_slice($missing, 0, $max);
+            $row['requested'] = count($missing);
+            if (!$missing || $dry_run) {
+                $row['pairs'] = array_map(function ($p) { return array('original' => $p); }, $missing);
+                $result['languages'][$lang] = $row;
+                continue;
+            }
+            // the engine receives plain text (entities decoded); keys stay as collected
+            $q = array_map(function ($p) { return urlencode(html_entity_decode($p, ENT_QUOTES | ENT_HTML5, 'UTF-8')); }, $missing);
+            $translated = array();
+            foreach (array_chunk($q, 25, true) as $chunk) {
+                $out = transposh_translate::get_bing_translation($lang, $sl, array_values($chunk));
+                if (!is_array($out) || count($out) !== count($chunk)) {
+                    $row['error'] = 'engine failure';
+                    break;
+                }
+                foreach (array_values(array_keys($chunk)) as $n => $idx) {
+                    $translated[$idx] = $out[$n];
+                }
+            }
+            $saved_post = $_POST;
+            try {
+                $k = 0;
+                $_POST = array('ln0' => $lang, 'sr0' => 2); // 2 = Microsoft Translator, as in the tp_tp proxy
+                foreach ($translated as $idx => $text) {
+                    if (!is_string($text) || trim($text) === '') {
+                        continue;
+                    }
+                    $_POST["tk$k"] = $missing[$idx];
+                    $_POST["tr$k"] = rawurlencode($text);
+                    $row['pairs'][] = array('original' => $missing[$idx], 'translation' => $text);
+                    $k++;
+                }
+                $_POST['items'] = $k;
+                if ($k) {
+                    // automatic source: update_translation() never replaces a human translation
+                    $this->transposh->database->update_translation((string) get_current_user_id());
+                }
+                $row['stored'] = $k;
+            } finally {
+                $_POST = $saved_post;
+            }
+            $result['languages'][$lang] = $row;
+        }
+        return rest_ensure_response($result);
     }
 
     /**
