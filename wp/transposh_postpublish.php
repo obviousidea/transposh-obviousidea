@@ -185,6 +185,13 @@ class transposh_postpublish {
             },
             'args' => array('samples' => array('default' => 10, 'sanitize_callback' => 'absint')),
         ));
+        register_rest_route('transposh/v1', '/translations', array(
+            'methods' => 'POST',
+            'callback' => array(&$this, 'rest_human_translations'),
+            'permission_callback' => function () {
+                return current_user_can('manage_options');
+            },
+        ));
         register_rest_route('transposh/v1', '/translate-missing/(?P<id>\d+)', array(
             'methods' => 'POST',
             'callback' => array(&$this, 'rest_translate_missing'),
@@ -192,6 +199,53 @@ class transposh_postpublish {
                 return current_user_can('manage_options') && current_user_can('edit_post', (int) $request['id']);
             },
         ));
+    }
+
+    /**
+     * Store reviewed translations as HUMAN translations (source 0), the same write path as
+     * the on-page editor. Body: items = [{original, lang, translation}], dry_run (default true).
+     * Returns the stored value before/after for every item, so the change can be reverted.
+     */
+    function rest_human_translations($request) {
+        $items = $request->get_param('items');
+        $dry_run = $request->get_param('dry_run') !== false && $request->get_param('dry_run') !== 'false' && $request->get_param('dry_run') !== 0;
+        if (!is_array($items) || !$items || count($items) > 100) {
+            return new WP_Error('tp_items', 'items must be a list of 1 to 100 {original, lang, translation}', array('status' => 400));
+        }
+        $db = $this->transposh->database;
+        $out = array('dry_run' => $dry_run, 'items' => array());
+        foreach ($items as $it) {
+            $orig = isset($it['original']) ? (string) $it['original'] : '';
+            $lang = isset($it['lang']) ? (string) $it['lang'] : '';
+            $text = isset($it['translation']) ? (string) $it['translation'] : '';
+            $row = array('original' => $orig, 'lang' => $lang, 'translation' => $text);
+            if ($orig === '' || trim($text) === '' || !$this->transposh->options->is_active_language($lang)
+                    || $this->transposh->options->is_default_language($lang)) {
+                $row['status'] = 'invalid';
+                $out['items'][] = $row;
+                continue;
+            }
+            $before = $db->fetch_translation($orig, $lang);
+            $row['before'] = is_array($before) ? array('source' => $before[0], 'translation' => $before[1]) : null;
+            if (!$dry_run) {
+                $saved_post = $_POST;
+                ob_start(); // the legacy write path may echo (e.g. disabled upstream backup notice)
+                try {
+                    $_POST = array('items' => 1, 'ln0' => $lang, 'sr0' => 0, 'tk0' => $orig, 'tr0' => rawurlencode($text));
+                    $db->update_translation((string) get_current_user_id());
+                } finally {
+                    ob_end_clean();
+                    $_POST = $saved_post;
+                }
+                $after = $db->fetch_translation($orig, $lang);
+                $row['after'] = is_array($after) ? array('source' => $after[0], 'translation' => $after[1]) : null;
+                $row['status'] = (is_array($after) && (string) $after[0] === '0') ? 'stored_human' : 'not_stored';
+            } else {
+                $row['status'] = 'dry_run';
+            }
+            $out['items'][] = $row;
+        }
+        return rest_ensure_response($out);
     }
 
     /**
@@ -203,6 +257,13 @@ class transposh_postpublish {
     static function is_engine_translatable($phrase) {
         $text = trim(html_entity_decode((string) $phrase, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
         if ($text === '' || preg_match('~^(https?:)?//\S+$~i', $text) || preg_match('~^[\w.-]+\.[a-z]{2,}(/\S*)?$~i', $text)) {
+            return false;
+        }
+        // technical <link title> labels: one word without context ("Feed" became "Futter"/"Pasz")
+        $skip = function_exists('apply_filters') ? apply_filters('transposh_engine_skip_phrases',
+                array('Feed', 'Comments Feed', 'RSD', 'oEmbed (JSON)', 'oEmbed (XML)', 'JSON', 'XML'))
+                : array('Feed', 'Comments Feed', 'RSD', 'oEmbed (JSON)', 'oEmbed (XML)', 'JSON', 'XML');
+        if (in_array($text, (array) $skip, true) || preg_match('~ (Comments )?Feed$~', $text)) {
             return false;
         }
         return (bool) preg_match('/\p{L}/u', $text);
@@ -249,21 +310,32 @@ class transposh_postpublish {
             'languages' => array());
         if ($request->get_param('engine_test')) {
             // one tiny request to the Microsoft endpoint, reporting HTTP status and API error code only
-            $key = trim((string) (defined('TRANSPOSH_MSN_KEY') ? TRANSPOSH_MSN_KEY : $o->msn_key));
             $endpoint = trim((string) $o->msn_endpoint);
             if ($endpoint === '' || stripos($endpoint, 'https://') !== 0) {
                 $endpoint = 'https://api.cognitive.microsofttranslator.com';
             }
-            $headers = array('Content-Type' => 'application/json', 'Ocp-Apim-Subscription-Key' => $key);
-            if (trim((string) $o->msn_region) !== '') {
-                $headers['Ocp-Apim-Subscription-Region'] = trim((string) $o->msn_region);
+            $const = defined('TRANSPOSH_MSN_KEY') ? trim((string) TRANSPOSH_MSN_KEY) : null;
+            $opt = trim((string) $o->msn_key);
+            // which key the engine really uses: the wp-config constant wins over the settings field
+            $result['engine']['key_source'] = $const !== null ? 'wp-config constant TRANSPOSH_MSN_KEY' : 'settings field';
+            $result['engine']['settings_field_differs_from_constant'] = $const !== null ? ($opt !== $const) : null;
+            $result['engine']['region'] = trim((string) $o->msn_region); // region is not secret
+            $candidates = array('in_use' => $const !== null ? $const : $opt);
+            if ($const !== null && $opt !== '' && $opt !== $const) {
+                $candidates['settings_field'] = $opt;
             }
-            $r = wp_remote_post(rtrim($endpoint, '/') . '/translate?api-version=3.0&to=fr&from=en',
-                    array('timeout' => 10, 'headers' => $headers, 'body' => wp_json_encode(array(array('Text' => 'Hello')))));
-            $body = is_wp_error($r) ? null : json_decode(wp_remote_retrieve_body($r), true);
-            $result['engine']['test'] = is_wp_error($r) ? array('transport_error' => $r->get_error_code())
-                : array('http' => wp_remote_retrieve_response_code($r), 'endpoint_host' => wp_parse_url($endpoint, PHP_URL_HOST),
-                    'api_error' => $body['error'] ?? null, 'ok' => isset($body[0]['translations'][0]['text']));
+            foreach ($candidates as $label => $key) {
+                $headers = array('Content-Type' => 'application/json', 'Ocp-Apim-Subscription-Key' => $key);
+                if (trim((string) $o->msn_region) !== '') {
+                    $headers['Ocp-Apim-Subscription-Region'] = trim((string) $o->msn_region);
+                }
+                $r = wp_remote_post(rtrim($endpoint, '/') . '/translate?api-version=3.0&to=fr&from=en',
+                        array('timeout' => 10, 'headers' => $headers, 'body' => wp_json_encode(array(array('Text' => 'Hello')))));
+                $body = is_wp_error($r) ? null : json_decode(wp_remote_retrieve_body($r), true);
+                $result['engine']['test'][$label] = is_wp_error($r) ? array('transport_error' => $r->get_error_code())
+                    : array('http' => wp_remote_retrieve_response_code($r), 'endpoint_host' => wp_parse_url($endpoint, PHP_URL_HOST),
+                        'api_error' => $body['error'] ?? null, 'ok' => isset($body[0]['translations'][0]['text']));
+            }
             return rest_ensure_response($result);
         }
         foreach ($langs as $lang) {
@@ -318,7 +390,12 @@ class transposh_postpublish {
                 $_POST['items'] = $k;
                 if ($k) {
                     // automatic source: update_translation() never replaces a human translation
-                    $this->transposh->database->update_translation((string) get_current_user_id());
+                    ob_start();
+                    try {
+                        $this->transposh->database->update_translation((string) get_current_user_id());
+                    } finally {
+                        ob_end_clean();
+                    }
                 }
                 $row['stored'] = $k;
             } finally {

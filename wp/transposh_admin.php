@@ -707,6 +707,7 @@ Please note that while Transposh currently offers a hosted LibreTranslate servic
     }
 
     function tp_engines() {
+        $this->engines_layout_assets();
         $this->section(__('Automatic Translation Settings', TRANSPOSH_TEXT_DOMAIN));
         $this->checkbox($this->transposh->options->enable_autotranslate_o, __('Enable automatic translation', TRANSPOSH_TEXT_DOMAIN)
                 , __('Allow automatic translation of pages', TRANSPOSH_TEXT_DOMAIN));
@@ -715,7 +716,7 @@ Please note that while Transposh currently offers a hosted LibreTranslate servic
         // FIX! OLD
         $this->textinput($this->transposh->options->msn_key_o
                 , array('bing', __('Microsoft Translator API key', TRANSPOSH_TEXT_DOMAIN))
-                , __('API Key', TRANSPOSH_TEXT_DOMAIN), 35, 'keys');
+                , __('API Key', TRANSPOSH_TEXT_DOMAIN), 35, 'keys', true);
         $this->textinput($this->transposh->options->msn_region_o
                 , ''
                 , __('Region (optional for global endpoint)', TRANSPOSH_TEXT_DOMAIN), 35, 'keys');
@@ -724,13 +725,13 @@ Please note that while Transposh currently offers a hosted LibreTranslate servic
                 , __('Endpoint URL', TRANSPOSH_TEXT_DOMAIN), 100, 'keys');
         $this->textinput($this->transposh->options->google_key_o
                 , array('google', __('Google API key', TRANSPOSH_TEXT_DOMAIN))
-                , __('API Key', TRANSPOSH_TEXT_DOMAIN), 35, 'keys');
+                , __('API Key', TRANSPOSH_TEXT_DOMAIN), 35, 'keys', true);
         $this->textinput($this->transposh->options->yandex_key_o
                 , array('yandex', __('Yandex API key', TRANSPOSH_TEXT_DOMAIN))
-                , __('API Key', TRANSPOSH_TEXT_DOMAIN), 35, 'keys');
+                , __('API Key', TRANSPOSH_TEXT_DOMAIN), 35, 'keys', true);
         $this->textinput($this->transposh->options->baidu_key_o
                 , array('baidu', __('Baidu API key', TRANSPOSH_TEXT_DOMAIN))
-                , __('API Key', TRANSPOSH_TEXT_DOMAIN), 35, 'keys');
+                , __('API Key', TRANSPOSH_TEXT_DOMAIN), 35, 'keys', true);
         if (empty($this->transposh->options->libretranslate_server)) {
             echo '<p><em>' . sprintf(esc_html__('If left empty this falls back to the upstream service %s (plain HTTP, likely offline). Enter your own https:// LibreTranslate server.', TRANSPOSH_TEXT_DOMAIN), esc_html(TRANSPOSH_LIBRETRANSLATE_SERVICE_URL)) . '</em></p>';
         }
@@ -742,7 +743,7 @@ Please note that while Transposh currently offers a hosted LibreTranslate servic
             , __('Endpoint URL', TRANSPOSH_TEXT_DOMAIN), 100, 'keys');
         $this->textinput($this->transposh->options->ollama_api_key_o
             , ''
-            , __('API Key', TRANSPOSH_TEXT_DOMAIN), 60, 'keys');
+            , __('API Key', TRANSPOSH_TEXT_DOMAIN), 60, 'keys', true);
         $this->textinput($this->transposh->options->ollama_model_o
             , ''
             , __('Model', TRANSPOSH_TEXT_DOMAIN), 60, 'keys');
@@ -1379,11 +1380,38 @@ document.addEventListener("DOMContentLoaded", function () {
         '</label><br/>';
     }
 
-    private function textinput($tpo, $head, $label, $length = 35, $help = '') {
+    private function textinput($tpo, $head, $label, $length = 35, $help = '', $secret = false) {
         if ($head) {
             $this->header($head, $help);
         }
-        echo $label . ': <input type="text" size="' . $length . '" class="regular-text" ' . $tpo->post_value_id_name() . '/>';
+        // one field per row, label above the input (the old inline layout wrapped unpredictably)
+        $id = esc_attr($tpo->get_name());
+        echo '<div class="tp-field"><label for="' . $id . '">' . $label . '</label>';
+        if ($secret) {
+            // API keys are masked on screen; the value is unchanged and still saved normally
+            echo '<span class="tp-secret"><input type="password" autocomplete="off" spellcheck="false" class="regular-text code" '
+                . $tpo->post_value_id_name() . '/>'
+                . ' <button type="button" class="button tp-reveal" data-target="' . $id . '" aria-pressed="false">'
+                . esc_html__('Show', TRANSPOSH_TEXT_DOMAIN) . '</button></span>';
+        } else {
+            echo '<input type="text" class="' . ($length > 60 ? 'large-text code' : 'regular-text') . '" ' . $tpo->post_value_id_name() . '/>';
+        }
+        echo '</div>';
+    }
+
+    /** Layout for the engines tab: stacked fields, readable widths, masked keys with a reveal button */
+    private function engines_layout_assets() {
+        echo '<style>
+.tp-field{margin:6px 0 14px;max-width:46em}
+.tp-field label{display:block;font-weight:600;margin-bottom:4px}
+.tp-field input.regular-text{width:100%;max-width:32em}
+.tp-field input.large-text{width:100%;max-width:46em}
+.tp-secret{display:flex;gap:6px;align-items:center;max-width:46em}
+.tp-secret input{flex:1 1 auto;width:auto;max-width:none}
+#poststuff .inside h3{margin:22px 0 8px;padding-top:14px;border-top:1px solid #dcdcde;font-size:1.15em}
+#poststuff .inside h3:first-of-type{border-top:0;padding-top:0}
+</style>';
+        echo '<script>document.addEventListener("click",function(e){var b=e.target.closest(".tp-reveal");if(!b)return;var i=document.getElementById(b.getAttribute("data-target"));if(!i)return;var show=i.type==="password";i.type=show?"text":"password";b.setAttribute("aria-pressed",show?"true":"false");b.textContent=show?"' . esc_js(__('Hide', TRANSPOSH_TEXT_DOMAIN)) . '":"' . esc_js(__('Show', TRANSPOSH_TEXT_DOMAIN)) . '";});</script>';
     }
 
     private function textareainput($tpo, $head, $label, $rows = 5, $cols = 80, $help = '') {

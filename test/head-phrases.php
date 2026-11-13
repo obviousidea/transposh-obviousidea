@@ -120,6 +120,8 @@ $checks['engine_skips_url'] = !transposh_postpublish::is_engine_translatable('ht
 $checks['engine_skips_host_path'] = !transposh_postpublish::is_engine_translatable('www2.obviousidea.com/wp-content/uploads/x.png');
 $checks['engine_skips_emoji'] = !transposh_postpublish::is_engine_translatable("\u{1F609}");
 $checks['engine_keeps_text'] = transposh_postpublish::is_engine_translatable('Works on all major versions of Windows (7 and above');
+$checks['engine_skips_feed_label'] = !transposh_postpublish::is_engine_translatable('Feed') && !transposh_postpublish::is_engine_translatable('ObviousIdea » Comments Feed');
+$checks['engine_keeps_feed_in_sentence'] = transposh_postpublish::is_engine_translatable('Feed your catalog to LrToolbox');
 $checks['engine_keeps_entities'] = transposh_postpublish::is_engine_translatable('Whether you&#8217;re a photographer');
 
 $fail = 0;
