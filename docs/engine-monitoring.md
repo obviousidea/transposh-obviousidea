@@ -10,7 +10,9 @@ tests the engine every day and sends an e-mail when it stops working.
 - **Daily test**: one real translation of one word (5 characters) through the Microsoft Translator code path, with WP-Cron.
   A failed test alerts at once. Needs a system cron or site traffic to fire.
 - **Alert e-mail** after 3 failed calls in a row, at most one per engine and error type every 24 hours, then one "works again".
-  Sent to the *Mail to* address of Transposh, otherwise to the site administrator. Errors that only mean a refused text or
+  Sent to the addresses typed in the *Alert e-mail addresses* field of the panel (several, comma separated, up to 5), otherwise
+  to the Transposh *Mail to* setting, otherwise to the site administrator. `TRANSPOSH_ENGINE_ALERT_TO` in `wp-config.php`
+  overrides all of them. The panel shows which source is in use. Errors that only mean a refused text or
   language (`request`, `unknown`) are counted but never alert on their own. Only Microsoft Translator alerts by default.
 - **Where to see it**: *Engine health* at the top of Transposh > Translation Engines (status, last success, last error, today
   and 7 days, configuration warnings, "Test now" and "Send a test e-mail"), and a red notice on the Transposh pages,
@@ -20,7 +22,7 @@ tests the engine every day and sends an e-mail when it stops working.
 
 ## Administrators only
 - `GET transposh/v1/engine-status`: summary (today, yesterday, 7 days, per day), health, configuration warnings, next test.
-- `POST transposh/v1/engine-status` with `action=test` (real test) or `action=mail` (test e-mail).
+- `POST transposh/v1/engine-status` with `action=test` (real test), `action=mail` (test e-mail) or `action=save` with `to` (alert addresses; empty goes back to the defaults).
 
 ## Switch off or tune
 - `define('TRANSPOSH_ENGINE_MONITOR', false);` in `wp-config.php`, or the filter `transposh_engine_monitor_enabled`.

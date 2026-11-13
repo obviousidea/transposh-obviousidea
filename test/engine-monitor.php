@@ -20,6 +20,7 @@ function update_option($k, $v, $autoload = null) {
     if (!empty($GLOBALS['opt_throws'])) { throw new RuntimeException('database down'); }
     $GLOBALS['opts'][$k] = $v; return true;
 }
+function delete_option($k) { unset($GLOBALS['opts'][$k]); return true; }
 function get_site_option($k, $d = false) { return $k === 'admin_email' ? 'admin@site.invalid' : $d; }
 function home_url($p = '') { return 'https://site.invalid' . $p; }
 function admin_url($p = '') { return 'https://site.invalid/wp-admin/' . $p; }
@@ -152,7 +153,7 @@ $checks['mail_recovered'] = strpos($rs, 'works again') !== false && strpos($rb, 
 
 // ---- config rules
 $base = array('autotranslate' => true, 'bing_first' => true, 'bing_key' => true, 'endpoint' => 'https://x', 'region' => 'westeurope', 'cron_disabled' => false,
-    'last_test' => $T0 - 3600, 'cf_status' => 'accepted', 'mail_to' => 'a@b.c', 'now' => $T0);
+    'last_test' => $T0 - 3600, 'cf_status' => 'accepted', 'alert_source' => 'alert addresses of this panel', 'now' => $T0);
 $checks['config_clean_has_no_issue'] = $M::evaluate_config($base) === array();
 $checks['config_missing_key_is_error'] = $M::evaluate_config(array('bing_key' => false) + $base)[0][0] === 'error';
 $checks['config_http_endpoint_warns'] = $M::evaluate_config(array('endpoint' => 'http://x') + $base)[0][0] === 'warn';
@@ -176,7 +177,7 @@ for ($i = 0; $i < 3; $i++) {
     $GLOBALS['T'] = $T0 + $i * 30;
     $mon->record_proxy_call('b', 'fr', array(urlencode('Hello world'), urlencode('Bye')), false, false);
 }
-$checks['proxy_three_failures_one_mail'] = count($GLOBALS['mails']) === 1 && $GLOBALS['mails'][0][0] === 'admin@site.invalid'
+$checks['proxy_three_failures_one_mail'] = count($GLOBALS['mails']) === 1 && $GLOBALS['mails'][0][0] === array('admin@site.invalid')
     && strpos($GLOBALS['mails'][0][1], '401001') !== false;
 $state = serialize($GLOBALS['opts']) . $GLOBALS['mails'][0][1] . $GLOBALS['mails'][0][2];
 $checks['no_key_or_text_stored_or_mailed'] = strpos($state, 'SECRETKEY') === false && strpos($state, 'Hello world') === false;
@@ -248,6 +249,41 @@ $checks['panel_has_both_buttons_and_recipient'] = strpos($html, 'data-tp-engine-
 $checks['panel_never_prints_key'] = strpos($html, 'SECRETKEY') === false;
 $payload = $mon->status_payload();
 $checks['status_payload_shape'] = isset($payload['summary'], $payload['health'], $payload['config_issues']) && strpos(json_encode($payload), 'SECRETKEY') === false;
+
+// ---- recipients
+list($v, $bad_entries) = $M::parse_recipients('a@x.com, B@y.org; a@X.com  c@z.io bad');
+$checks['parse_recipients_valid_dedup_invalid'] = $v === array('a@x.com', 'B@y.org', 'c@z.io') && $bad_entries === array('bad');
+$checks['parse_recipients_limit_five'] = count($M::parse_recipients('a@x.io b@x.io c@x.io d@x.io e@x.io f@x.io g@x.io')[0]) === 5;
+$checks['parse_recipients_empty'] = $M::parse_recipients('') === array(array(), array());
+$GLOBALS['opts'] = array(); $GLOBALS['mails'] = array();
+$checks['recipients_default_site_admin'] = $mon->recipients() === array(array('admin@site.invalid'), 'site administrator address');
+$plugin->options->mail_to = 'philipp@site.invalid';
+$checks['recipients_transposh_mail_to_first'] = $mon->recipients() === array(array('philipp@site.invalid'), 'Transposh "Mail to" setting');
+$r = $mon->save_recipients('fabrice@site.invalid, philipp@site.invalid');
+$checks['save_recipients_stores_list'] = $r['ok'] === true && $GLOBALS['opts']['transposh_engine_alert_to'] === 'fabrice@site.invalid, philipp@site.invalid'
+    && $mon->recipients()[1] === 'alert addresses of this panel';
+$r = $mon->save_recipients('fabrice@site.invalid, not-an-address');
+$checks['save_recipients_rejects_invalid_keeps_previous'] = $r['ok'] === false && $r['invalid'] === array('not-an-address')
+    && $GLOBALS['opts']['transposh_engine_alert_to'] === 'fabrice@site.invalid, philipp@site.invalid';
+$GLOBALS['T'] = $T0 + 10 * 86400;
+transposh_translate::$last = array('code' => 401, 'body' => $AUTH_BODY);
+for ($i = 0; $i < 3; $i++) { $mon->record_proxy_call('b', 'fr', array('a'), false); }
+$checks['alert_goes_to_every_recipient'] = count($GLOBALS['mails']) === 1 && $GLOBALS['mails'][0][0] === array('fabrice@site.invalid', 'philipp@site.invalid');
+$checks['mail_record_lists_recipients'] = $GLOBALS['opts']['transposh_engine_health']['_mail']['to'] === 'fabrice@site.invalid, philipp@site.invalid';
+ob_start(); $mon->render_panel(); $html = ob_get_clean();
+$checks['panel_has_address_field_and_current_list'] = strpos($html, 'id="tp_engine_alert_to"') !== false && strpos($html, 'value="fabrice@site.invalid, philipp@site.invalid"') !== false
+    && strpos($html, 'alert addresses of this panel') !== false && strpos($html, 'data-tp-engine-action="save"') !== false;
+$payload = $mon->status_payload();
+$checks['status_payload_lists_recipients'] = $payload['recipients'] === array('fabrice@site.invalid', 'philipp@site.invalid') && $payload['recipients_source'] === 'alert addresses of this panel';
+$r = $mon->save_recipients('');
+$checks['save_empty_returns_to_defaults'] = $r['ok'] === true && !isset($GLOBALS['opts']['transposh_engine_alert_to']) && $mon->recipients()[1] === 'Transposh "Mail to" setting';
+$checks['config_alert_source_site_admin_is_info'] = $M::evaluate_config(array('alert_source' => 'site administrator address') + $base)[0][0] === 'info';
+$checks['config_no_recipient_is_error'] = $M::evaluate_config(array('alert_source' => 'none') + $base)[0][0] === 'error';
+$plugin->options->mail_to = '';
+// the wp-config constant wins and blocks the field (last: a constant cannot be undefined)
+define('TRANSPOSH_ENGINE_ALERT_TO', 'const@site.invalid');
+$checks['constant_wins'] = $mon->recipients() === array(array('const@site.invalid'), 'wp-config.php (TRANSPOSH_ENGINE_ALERT_TO)');
+$checks['constant_blocks_saving'] = $mon->save_recipients('x@site.invalid')['ok'] === false && !isset($GLOBALS['opts']['transposh_engine_alert_to']);
 
 $fail = 0;
 foreach ($checks as $k => $v) { echo ($v ? 'PASS ' : 'FAIL ') . $k . "\n"; if (!$v) { $fail++; } }

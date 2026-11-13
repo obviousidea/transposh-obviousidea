@@ -25,6 +25,7 @@ class transposh_engine_monitor {
 
     const OPT_STATS = 'transposh_engine_stats';
     const OPT_HEALTH = 'transposh_engine_health';
+    const OPT_ALERT_TO = 'transposh_engine_alert_to';
     const CRON_EVENT = 'transposh_engine_health_event';
     /** days of counters kept */
     const KEEP_DAYS = 14;
@@ -307,8 +308,10 @@ class transposh_engine_monitor {
         if (!empty($cfg['cf_status']) && $cfg['cf_status'] !== 'accepted') {
             $issues[] = array('warn', 'The last Cloudflare cache purge was not accepted (' . $cfg['cf_status'] . ').');
         }
-        if (empty($cfg['mail_to'])) {
-            $issues[] = array('info', 'No e-mail address is set for Transposh notifications: alerts go to the site administrator address.');
+        if (($cfg['alert_source'] ?? '') === 'site administrator address') {
+            $issues[] = array('info', 'No alert address is set: alerts go to the site administrator address. Set one in the field below.');
+        } elseif (($cfg['alert_source'] ?? '') === 'none') {
+            $issues[] = array('error', 'No valid e-mail address for the alerts: nobody will be told when an engine fails.');
         }
         return $issues;
     }
@@ -459,13 +462,73 @@ class transposh_engine_monitor {
 
     /* ------------------------------------------------------------------ e-mail */
 
-    function mail_to() {
-        $o = $this->transposh->options;
-        return $o->mail_to ? $o->mail_to : get_site_option('admin_email');
+    /**
+     * Valid e-mail addresses of a comma, semicolon or space separated list.
+     * @return array array(list of valid addresses without duplicates, list of invalid entries)
+     */
+    static function parse_recipients($raw, $max = 5) {
+        $valid = array();
+        $invalid = array();
+        foreach (preg_split('/[\s,;]+/', (string) $raw, -1, PREG_SPLIT_NO_EMPTY) as $a) {
+            if (filter_var($a, FILTER_VALIDATE_EMAIL)) {
+                $valid[strtolower($a)] = $valid[strtolower($a)] ?? $a;
+            } else {
+                $invalid[] = $a;
+            }
+        }
+        return array(array_slice(array_values($valid), 0, $max), $invalid);
+    }
+
+    /**
+     * Who gets the alerts: wp-config constant TRANSPOSH_ENGINE_ALERT_TO, then the field of the Engine health panel,
+     * then the "Mail to" address of Transposh, then the site administrator.
+     * @return array array(list of addresses, source label)
+     */
+    function recipients() {
+        $candidates = array();
+        if (defined('TRANSPOSH_ENGINE_ALERT_TO')) {
+            $candidates[] = array(TRANSPOSH_ENGINE_ALERT_TO, 'wp-config.php (TRANSPOSH_ENGINE_ALERT_TO)');
+        }
+        $candidates[] = array(get_option(self::OPT_ALERT_TO, ''), 'alert addresses of this panel');
+        $candidates[] = array($this->transposh->options->mail_to, 'Transposh "Mail to" setting');
+        $candidates[] = array(get_site_option('admin_email'), 'site administrator address');
+        foreach ($candidates as $c) {
+            list($list) = self::parse_recipients($c[0]);
+            if ($list) {
+                return array($list, $c[1]);
+            }
+        }
+        return array(array(), 'none');
+    }
+
+    /**
+     * Save the addresses typed in the panel; an empty value goes back to the defaults.
+     * @return array ok, message, to (addresses in use), invalid
+     */
+    function save_recipients($raw) {
+        if (defined('TRANSPOSH_ENGINE_ALERT_TO')) {
+            return array('ok' => false, 'message' => 'The addresses are fixed in wp-config.php (TRANSPOSH_ENGINE_ALERT_TO).',
+                'to' => $this->recipients()[0], 'invalid' => array());
+        }
+        list($list, $invalid) = self::parse_recipients($raw);
+        if ($invalid) {
+            return array('ok' => false, 'message' => 'Not saved. Invalid address: ' . implode(', ', $invalid),
+                'to' => $this->recipients()[0], 'invalid' => $invalid);
+        }
+        if ($list) {
+            update_option(self::OPT_ALERT_TO, implode(', ', $list), false);
+        } else {
+            delete_option(self::OPT_ALERT_TO);
+        }
+        list($now, $source) = $this->recipients();
+        return array('ok' => true, 'message' => 'Alerts go to ' . implode(', ', $now) . ' (' . $source . ').', 'to' => $now, 'invalid' => array());
     }
 
     private function send($subject, $body) {
-        $to = $this->mail_to();
+        $to = $this->recipients()[0];
+        if (!$to) {
+            return false;
+        }
         if (self::$mailer) {
             return (bool) call_user_func(self::$mailer, $to, $subject, $body);
         }
@@ -480,7 +543,7 @@ class transposh_engine_monitor {
             admin_url('admin.php?page=tp_engines'));
         $ok = $this->send($subject, $body);
         $health = $this->load(self::OPT_HEALTH);
-        $health['_mail'] = array('t' => self::now(), 'ok' => $ok, 'type' => $event['type'], 'to' => $this->mail_to());
+        $health['_mail'] = array('t' => self::now(), 'ok' => $ok, 'type' => $event['type'], 'to' => implode(', ', $this->recipients()[0]));
         update_option(self::OPT_HEALTH, $health, false);
     }
 
@@ -500,7 +563,7 @@ class transposh_engine_monitor {
             'cron_disabled' => defined('DISABLE_WP_CRON') && DISABLE_WP_CRON,
             'last_test' => $health['_test']['t'] ?? null,
             'cf_status' => is_array($cf) ? ($cf['status'] ?? null) : null,
-            'mail_to' => (string) $o->mail_to,
+            'alert_source' => $this->recipients()[1],
             'now' => self::now(),
         ));
     }
@@ -512,7 +575,8 @@ class transposh_engine_monitor {
             'enabled' => self::enabled(),
             'version' => defined('TRANSPOSH_PLUGIN_VER') ? TRANSPOSH_PLUGIN_VER : null,
             'now' => self::now(),
-            'recipient' => $this->mail_to(),
+            'recipients' => $this->recipients()[0],
+            'recipients_source' => $this->recipients()[1],
             'next_test' => wp_next_scheduled(self::CRON_EVENT) ?: null,
             'summary' => self::summarize($stats, self::now(), self::offset()),
             'health' => $health,
@@ -530,12 +594,12 @@ class transposh_engine_monitor {
             array('methods' => 'POST', 'permission_callback' => function () {
                 return current_user_can('manage_options');
             }, 'callback' => function ($request) {
-                return rest_ensure_response($this->do_action_named((string) $request->get_param('action')));
+                return rest_ensure_response($this->do_action_named((string) $request->get_param('action'), (string) $request->get_param('to')));
             }),
         ));
     }
 
-    private function do_action_named($action) {
+    private function do_action_named($action, $raw = '') {
         if ($action === 'test') {
             return $this->run_test('b');
         }
@@ -543,7 +607,10 @@ class transposh_engine_monitor {
             $site = wp_parse_url(home_url(), PHP_URL_HOST) ?: home_url();
             $ok = $this->send("[Transposh] Test e-mail from $site",
                 "This is a test message from Transposh on $site.\nIf you read it, engine alerts will reach this address.\n");
-            return array('ok' => $ok, 'to' => $this->mail_to());
+            return array('ok' => $ok, 'to' => $this->recipients()[0]);
+        }
+        if ($action === 'save') {
+            return $this->save_recipients($raw);
         }
         return array('ok' => false, 'message' => 'Unknown action.');
     }
@@ -554,12 +621,16 @@ class transposh_engine_monitor {
             wp_send_json_error(array('message' => 'You are not allowed to do this.'), 403);
         }
         $do = isset($_POST['do']) ? sanitize_key(wp_unslash($_POST['do'])) : '';
-        $r = $this->do_action_named($do);
+        $raw = isset($_POST['to']) ? sanitize_text_field(wp_unslash($_POST['to'])) : '';
+        $r = $this->do_action_named($do, $raw);
+        $to = implode(', ', (array) ($r['to'] ?? array()));
         if ($do === 'test') {
             $msg = !empty($r['ok']) ? ('Microsoft Translator answered in ' . (int) $r['ms'] . ' ms.')
                 : ('Microsoft Translator failed: ' . (!empty($r['code']) ? 'error ' . $r['code'] . '. ' : '') . ($r['message'] ?? '') . ' ' . ($r['hint'] ?? ''));
+        } elseif ($do === 'save') {
+            $msg = $r['message'] ?? '';
         } else {
-            $msg = !empty($r['ok']) ? ('Test e-mail sent to ' . $r['to'] . '.') : ('The e-mail could not be sent to ' . ($r['to'] ?? '') . '. Check the mail setup of this site.');
+            $msg = !empty($r['ok']) ? ('Test e-mail sent to ' . $to . '.') : ('The e-mail could not be sent to ' . $to . '. Check the mail setup of this site.');
         }
         wp_send_json_success(array('ok' => !empty($r['ok']), 'message' => trim($msg)));
     }
@@ -642,18 +713,28 @@ class transposh_engine_monitor {
             }
             echo '</ul>';
         }
+        list($to, $source) = $this->recipients();
+        $fixed = defined('TRANSPOSH_ENGINE_ALERT_TO');
+        echo '<p><label for="tp_engine_alert_to"><strong>Alert e-mail addresses</strong></label><br>'
+            . '<input type="text" id="tp_engine_alert_to" class="regular-text" style="width:100%;max-width:32em" '
+            . 'placeholder="name@example.com, other@example.com" value="' . esc_attr($fixed ? '' : (string) get_option(self::OPT_ALERT_TO, '')) . '"'
+            . ($fixed ? ' disabled' : '') . '> <button type="button" class="button" data-tp-engine-action="save"'
+            . ($fixed ? ' disabled' : '') . '>Save</button><br>'
+            . '<span class="description">Separate with commas, up to 5. Empty: the Transposh "Mail to" address, then the site administrator. '
+            . 'Used now: <code>' . esc_html(implode(', ', $to) ?: 'nobody') . '</code> (' . esc_html($source) . ').</span></p>';
         echo '<p><button type="button" class="button" data-tp-engine-action="test">Test Microsoft Translator now</button> '
             . '<button type="button" class="button" data-tp-engine-action="mail">Send a test e-mail</button></p>';
         echo '<p id="tp_engine_health_result" aria-live="polite"></p>';
         $next = wp_next_scheduled(self::CRON_EVENT);
         echo '<p>Last automatic test: ' . $ts($health['_test']['t'] ?? 0) . ' &middot; next: '
             . ($next ? $ts($next) : '<span style="color:#996800">not scheduled</span>') . '</p>';
-        echo '<p class="description">After ' . (int) self::THRESHOLD . ' failures in a row, or a failed daily test, an e-mail goes to <code>'
-            . esc_html($this->mail_to()) . '</code>: at most one per engine and problem type every 24 hours, and one when it works again. '
+        echo '<p class="description">After ' . (int) self::THRESHOLD . ' failures in a row, or a failed daily test, an e-mail is sent: '
+            . 'at most one per engine and problem type every 24 hours, and one when it works again. '
             . 'The counters hold no text, key or visitor data.</p>';
         echo '<script>document.addEventListener("click",function(e){var b=e.target.closest("[data-tp-engine-action]");if(!b)return;'
             . 'var o=document.getElementById("tp_engine_health_result"),d=new URLSearchParams();d.append("action","tp_engine_health");'
             . 'd.append("_ajax_nonce","' . esc_js(wp_create_nonce('tp_engine_health')) . '");d.append("do",b.getAttribute("data-tp-engine-action"));'
+            . 'if(b.getAttribute("data-tp-engine-action")==="save"){d.append("to",document.getElementById("tp_engine_alert_to").value);}'
             . 'b.disabled=true;o.textContent="...";o.style.color="";'
             . 'fetch(ajaxurl,{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded; charset=UTF-8"},body:d.toString()})'
             . '.then(function(r){return r.json();}).then(function(p){var ok=p&&p.success&&p.data&&p.data.ok;o.style.color=ok?"#1a7f37":"#b32d2e";'
