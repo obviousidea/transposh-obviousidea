@@ -36,6 +36,147 @@ class transposh_postpublish {
         // we need this anyway because of the change language selection
         add_action('edit_post', array(&$this, 'on_edit'));
         add_action('admin_menu', array(&$this, 'on_admin_menu'));
+        add_action('rest_api_init', array(&$this, 'register_rest_routes'));
+    }
+
+    /**
+     * Phrases that only exist in the rendered default-language <head>: the SEO title,
+     * meta description, Open Graph/Twitter texts and JSON-LD headline/description
+     * produced by SEO plugins (SEOPress, Yoast...). They are not part of the post
+     * content, so "translate all" and post-publish translation never queued them.
+     * The page is fetched anonymously so the keys match exactly what the parser
+     * meets at render time.
+     * @param int $postID
+     * @return array phrase => phrase
+     */
+    function get_rendered_head_phrases($postID) {
+        if (!apply_filters('transposh_collect_head_phrases', true, $postID)) {
+            return array();
+        }
+        $post = get_post($postID);
+        if (!$post || $post->post_status !== 'publish' || (function_exists('is_post_publicly_viewable') && !is_post_publicly_viewable($post))) {
+            return array();
+        }
+        $permalink = get_permalink($postID);
+        if (!$permalink) {
+            return array();
+        }
+        // a query argument keeps full-page caches out of the way; no cookies are sent
+        $response = wp_remote_get(add_query_arg('tp_head_phrases', '1', $permalink), array(
+            'timeout' => 15,
+            'redirection' => 0,
+            'user-agent' => 'Transposh head phrase collector; ' . home_url('/'),
+            'headers' => array('Cache-Control' => 'no-cache'),
+        ));
+        if (is_wp_error($response) || (int) wp_remote_retrieve_response_code($response) !== 200) {
+            tp_logger('head phrases: page fetch failed for post ' . $postID, 2);
+            return array();
+        }
+        return self::extract_head_phrases(wp_remote_retrieve_body($response));
+    }
+
+    /**
+     * Extract translatable phrases from an HTML document head.
+     * Pure function (no WordPress calls) so it can be tested in isolation.
+     * @param string $html
+     * @return array phrase => phrase
+     */
+    static function extract_head_phrases($html) {
+        if (!is_string($html) || !preg_match('~<head\b[^>]*>(.*?)</head>~is', $html, $m)) {
+            return array();
+        }
+        $head = $m[1];
+        $phrases = array();
+        // JSON-LD: the parser translates whole "headline"/"description" values
+        if (preg_match_all('~<script\b[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>~is', $head, $scripts)) {
+            foreach ($scripts[1] as $json) {
+                $data = json_decode(trim($json), true);
+                if (!is_array($data)) {
+                    continue;
+                }
+                array_walk_recursive($data, function ($value, $key) use (&$phrases) {
+                    if (($key === 'headline' || $key === 'description') && is_string($value) && trim($value) !== '') {
+                        $phrases[$value] = $value;
+                    }
+                });
+            }
+        }
+        // <title>, <meta content> and <link title>: reuse the parser's own tagging rules
+        $head = preg_replace('~<(script|style|noscript)\b[^>]*>.*?</\1>~is', '', $head);
+        $parser = new tp_parser();
+        foreach ($parser->get_phrases_list($head) as $phrase) {
+            $phrases[$phrase] = $phrase;
+        }
+        return $phrases;
+    }
+
+    /**
+     * All phrases of a post, grouped by origin
+     * @param int $postID
+     * @return array array('content' => phrase=>phrase, 'head' => phrase=>phrase)
+     */
+    function collect_post_phrases($postID) {
+        global $post; // some filters below expect it
+        $post = get_post($postID);
+        $title = apply_filters('the_title', $post->post_title);
+        $content = apply_filters('the_content', $post->post_content);
+        $the_content_feed = apply_filters('the_content_feed', $content);
+        $excerpt = apply_filters('get_the_excerpt', $post->post_excerpt);
+        $excerpt_rss = apply_filters('the_excerpt_rss', $excerpt);
+
+        $parser = new tp_parser();
+        $phrases = array_merge($parser->get_phrases_list($content), $parser->get_phrases_list($title),
+                $parser->get_phrases_list($the_content_feed), $parser->get_phrases_list($excerpt),
+                $parser->get_phrases_list($excerpt_rss));
+        return array('content' => $phrases, 'head' => $this->get_rendered_head_phrases($postID));
+    }
+
+    function register_rest_routes() {
+        register_rest_route('transposh/v1', '/coverage/(?P<id>\d+)', array(
+            'methods' => 'GET',
+            'callback' => array(&$this, 'rest_coverage'),
+            'permission_callback' => function ($request) {
+                return current_user_can('manage_options') && current_user_can('edit_post', (int) $request['id']);
+            },
+            'args' => array('samples' => array('default' => 10, 'sanitize_callback' => 'absint')),
+        ));
+    }
+
+    /**
+     * Read-only translation coverage of one post, per viewable language.
+     * Source 0 = human, 1+ = automatic (see tp_parser::create_edit_span).
+     */
+    function rest_coverage($request) {
+        $postID = (int) $request['id'];
+        if (!get_post($postID)) {
+            return new WP_Error('tp_no_post', 'Unknown post', array('status' => 404));
+        }
+        $samples = min(50, (int) $request['samples']);
+        $groups = $this->collect_post_phrases($postID);
+        $result = array('post' => $postID, 'url' => get_permalink($postID), 'languages' => array());
+        foreach (explode(',', $this->transposh->options->viewable_languages) as $lang) {
+            if ($this->transposh->options->is_default_language($lang)) {
+                continue;
+            }
+            foreach ($groups as $group => $phrases) {
+                $row = array('total' => count($phrases), 'human' => 0, 'auto' => 0, 'missing' => 0, 'missing_samples' => array());
+                foreach ($phrases as $phrase) {
+                    list($source, $translation) = $this->transposh->database->fetch_translation($phrase, $lang);
+                    if (!$translation) {
+                        $row['missing']++;
+                        if (count($row['missing_samples']) < $samples) {
+                            $row['missing_samples'][] = $phrase;
+                        }
+                    } elseif ((string) $source === '0') {
+                        $row['human']++;
+                    } else {
+                        $row['auto']++;
+                    }
+                }
+                $result['languages'][$lang][$group] = $row;
+            }
+        }
+        return rest_ensure_response($result);
     }
 
     /**
@@ -109,26 +250,11 @@ class transposh_postpublish {
         else {
             if (!current_user_can('edit_post', $postID))
                 return;
-            global $post; // thid is needed because some of the functions below expect it...
-            $post = get_post($postID);
-            // Display filters
-            $title = apply_filters('the_title', $post->post_title);
-            $content = apply_filters('the_content', $post->post_content);
-            $the_content_feed = apply_filters('the_content_feed', $content);
-            $excerpt = apply_filters('get_the_excerpt', $post->post_excerpt);
-            $excerpt_rss = apply_filters('the_excerpt_rss', $excerpt);
-
             //TODO - get comments text
-
-            $parser = new tp_parser();
-            $phrases = $parser->get_phrases_list($content);
-            $phrases2 = $parser->get_phrases_list($title);
-            $phrases3 = $parser->get_phrases_list($the_content_feed);
-            $phrases4 = $parser->get_phrases_list($excerpt);
-            $phrases5 = $parser->get_phrases_list($excerpt_rss);
-
-            // Merge the two arrays for traversing
-            $phrases = array_merge($phrases, $phrases2, $phrases3, $phrases4, $phrases5);
+            $groups = $this->collect_post_phrases($postID);
+            $title = apply_filters('the_title', get_post($postID)->post_title);
+            // content phrases plus SEO <head> phrases (title, description, OG, JSON-LD)
+            $phrases = array_merge($groups['content'], $groups['head']);
             tp_logger($phrases, 4);
 
             // Add phrases from permalink
