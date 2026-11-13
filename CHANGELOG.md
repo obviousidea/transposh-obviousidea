@@ -3,6 +3,14 @@
 Releases of this fork first (2026.11.x and 1.0.15), then the history inherited from upstream Transposh.
 `readme.txt` keeps the WordPress-format list of the recent versions.
 
+## 2026.11.7
+
+- Add an engine health monitor: per-day counters of calls, phrases and characters for each engine (no text, key or visitor data stored, kept 14 days), a real one-word test every day with WP-Cron, and an e-mail alert after 3 failed calls in a row (at most one per engine and error type every 24 hours, then one "works again" e-mail). A failed daily test alerts at once.
+- Add an "Engine health" panel at the top of Translation Engines (status, last success and error, today and 7 days, configuration warnings, "Test now" and "Send a test e-mail"), and a notice on the Transposh pages, the Dashboard and the Plugins page while an engine fails.
+- Alert addresses: a dedicated field (up to 5 addresses, comma separated), otherwise the Transposh "Mail to" setting, otherwise the site administrator; the `TRANSPOSH_ENGINE_ALERT_TO` constant overrides all of them. The kill switch is `TRANSPOSH_ENGINE_MONITOR`.
+- Add admin-only REST route `transposh/v1/engine-status` (summary, real test, test e-mail, save addresses). The HTTP status and error code of the last engine call are kept for diagnosis; keys and headers are never stored.
+- No change to the parser, the dictionary layer, page-cache invalidation, language detection, redirects or the sitemap code. Dictionary translations are site data and are not bundled. Details: docs/engine-monitoring.md.
+
 ## 2026.11.6
 
 - Fix "Translate all" and post-publish translation queuing phrases the page never looks up: they now apply the site's phrase-breaking options (do not break on punctuation, numbers or entities) exactly as the page render does.
