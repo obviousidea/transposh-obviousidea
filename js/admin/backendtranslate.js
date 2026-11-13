@@ -197,6 +197,10 @@
             success: function (json) {
                 // if we got no results than seems like we have nothing to translate
                 $("#tr_translate_title").html("Translating post: " + json.posttitle);
+                // SEO <head> phrases (title, description, OG, JSON-LD) could not be collected
+                if (json.head_status && json.head_status !== "ok" && json.head_status !== "disabled") {
+                    $("#tr_translate_title").append($("<em/>").text(" (SEO head not collected: " + json.head_status + ")"));
+                }
                 if (json.length === undefined) {
                     $("#tr_loading").html('Nothing left to translate');
                     $("#tr_loading").data("done", true);

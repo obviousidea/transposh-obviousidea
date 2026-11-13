@@ -76,12 +76,26 @@ $checks['ignores_inline_script'] = strpos($joined, 'Do not translate me') === fa
 $checks['ignores_style'] = strpos($joined, 'Not a phrase') === false;
 $checks['ignores_body'] = strpos($joined, 'Body text') === false;
 $checks['ignores_jsonld_name'] = !in_array('ObviousIdea', $got, true);
-$checks['no_head_returns_empty'] = transposh_postpublish::extract_head_phrases('<p>no head</p>') === array();
-$checks['non_string_returns_empty'] = transposh_postpublish::extract_head_phrases(null) === array();
+$checks['no_head_returns_null'] = transposh_postpublish::extract_head_phrases('<p>no head</p>') === null;
+$checks['non_string_returns_null'] = transposh_postpublish::extract_head_phrases(null) === null;
+$checks['empty_head_returns_array'] = transposh_postpublish::extract_head_phrases('<html><head></head></html>') === array();
+
+// Codex review cases: literal UTF-8 NBSP, unquoted/varied JSON-LD attributes, several scripts
+$nbsp = "\xC2\xA0";
+$tricky = '<html><head><title>Light' . $nbsp . 'Image Resizer : batch photo resizer</title>'
+    . '<meta name="description" content="Resize' . $nbsp . 'photos in batch.">'
+    . '<script type=application/ld+json>{"headline":"Unquoted' . $nbsp . 'type headline"}</script>'
+    . "<script data-x='1' type='application/ld+json'>{\"@graph\":[{\"description\":\"Second script description\"}]}</script>"
+    . '</head><body></body></html>';
+$fixtures_extra = array('tricky' => $tricky);
+$got = transposh_postpublish::extract_head_phrases($tricky);
+$checks['nbsp_normalised_like_fix_html'] = !preg_grep('/\xC2\xA0/', $got);
+$checks['jsonld_unquoted_type_collected'] = in_array('Unquoted type headline', $got, true);
+$checks['jsonld_second_script_collected'] = in_array('Second script description', $got, true);
 $checks['invalid_jsonld_ignored'] = is_array(transposh_postpublish::extract_head_phrases('<html><head><script type="application/ld+json">{bad</script><title>Ok title</title></head></html>'));
 
 // Parity on the synthetic head and on an optional real page
-$fixtures = array('synthetic' => $synthetic);
+$fixtures = array('synthetic' => $synthetic) + $fixtures_extra;
 if (!empty($args['fixture'])) { $fixtures['fixture'] = file_get_contents($args['fixture']); }
 foreach ($fixtures as $name => $html) {
     $asked = render_requests($html);

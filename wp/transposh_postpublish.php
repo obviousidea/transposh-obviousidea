@@ -46,51 +46,77 @@ class transposh_postpublish {
      * content, so "translate all" and post-publish translation never queued them.
      * The page is fetched anonymously so the keys match exactly what the parser
      * meets at render time.
+     *
+     * Failures are never silent: the status tells why nothing was collected
+     * (disabled, not_public, protected, http_error, http_<code>, no_head, ok).
      * @param int $postID
-     * @return array phrase => phrase
+     * @return array array('status' => string, 'phrases' => phrase => phrase)
      */
     function get_rendered_head_phrases($postID) {
+        $none = function ($status) use ($postID) {
+            if ($status !== 'disabled') {
+                tp_logger("head phrases: post $postID not collected ($status)", 2);
+            }
+            return array('status' => $status, 'phrases' => array());
+        };
         if (!apply_filters('transposh_collect_head_phrases', true, $postID)) {
-            return array();
+            return $none('disabled');
         }
         $post = get_post($postID);
         if (!$post || $post->post_status !== 'publish' || (function_exists('is_post_publicly_viewable') && !is_post_publicly_viewable($post))) {
-            return array();
+            return $none('not_public');
+        }
+        if (post_password_required($post) || $post->post_password !== '') {
+            return $none('protected'); // a 200 would be the password form, not the real head
         }
         $permalink = get_permalink($postID);
         if (!$permalink) {
-            return array();
+            return $none('no_permalink');
         }
-        // a query argument keeps full-page caches out of the way; no cookies are sent
+        // Anonymous request (no cookies, so no remembered-language redirect); the
+        // query argument keeps WP Rocket's file cache out of the way (query strings
+        // are not cached by default). No JavaScript runs, so beacon-based analytics
+        // do not count it. Redirects are not followed: a redirect is reported.
         $response = wp_remote_get(add_query_arg('tp_head_phrases', '1', $permalink), array(
-            'timeout' => 15,
+            'timeout' => (int) apply_filters('transposh_head_phrases_timeout', 8),
             'redirection' => 0,
             'user-agent' => 'Transposh head phrase collector; ' . home_url('/'),
             'headers' => array('Cache-Control' => 'no-cache'),
         ));
-        if (is_wp_error($response) || (int) wp_remote_retrieve_response_code($response) !== 200) {
-            tp_logger('head phrases: page fetch failed for post ' . $postID, 2);
-            return array();
+        if (is_wp_error($response)) {
+            return $none('http_error');
         }
-        return self::extract_head_phrases(wp_remote_retrieve_body($response));
+        $code = (int) wp_remote_retrieve_response_code($response);
+        if ($code !== 200) {
+            return $none('http_' . $code);
+        }
+        $phrases = self::extract_head_phrases(wp_remote_retrieve_body($response));
+        if ($phrases === null) {
+            return $none('no_head');
+        }
+        return array('status' => 'ok', 'phrases' => $phrases);
     }
 
     /**
      * Extract translatable phrases from an HTML document head.
+     * Mirrors tp_parser::fix_html(): same NBSP normalisation, same DOM selection
+     * of JSON-LD scripts, same tagging rules for <title>/<meta>/<link title>.
      * Pure function (no WordPress calls) so it can be tested in isolation.
      * @param string $html
-     * @return array phrase => phrase
+     * @return array|null phrase => phrase, null when the document has no head
      */
     static function extract_head_phrases($html) {
         if (!is_string($html) || !preg_match('~<head\b[^>]*>(.*?)</head>~is', $html, $m)) {
-            return array();
+            return null;
         }
-        $head = $m[1];
+        // fix_html() replaces UTF-8 non-breaking spaces before building its DOM
+        $head = str_replace(chr(0xC2) . chr(0xA0), ' ', $m[1]);
         $phrases = array();
-        // JSON-LD: the parser translates whole "headline"/"description" values
-        if (preg_match_all('~<script\b[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>~is', $head, $scripts)) {
-            foreach ($scripts[1] as $json) {
-                $data = json_decode(trim($json), true);
+        // JSON-LD: same DOM selector and decoding as fix_html(), whole headline/description values
+        $dom = str_get_html_transposh('<html><head>' . $head . '</head><body></body></html>', false);
+        if (is_object($dom)) {
+            foreach ($dom->find('script[type=application/ld+json]') as $e) {
+                $data = json_decode($e->innertext, true);
                 if (!is_array($data)) {
                     continue;
                 }
@@ -100,6 +126,7 @@ class transposh_postpublish {
                     }
                 });
             }
+            $dom->clear();
         }
         // <title>, <meta content> and <link title>: reuse the parser's own tagging rules
         $head = preg_replace('~<(script|style|noscript)\b[^>]*>.*?</\1>~is', '', $head);
@@ -113,7 +140,8 @@ class transposh_postpublish {
     /**
      * All phrases of a post, grouped by origin
      * @param int $postID
-     * @return array array('content' => phrase=>phrase, 'head' => phrase=>phrase)
+     * @return array array('title' => filtered title, 'content' => phrase=>phrase,
+     *               'head' => phrase=>phrase, 'head_status' => string)
      */
     function collect_post_phrases($postID) {
         global $post; // some filters below expect it
@@ -128,7 +156,8 @@ class transposh_postpublish {
         $phrases = array_merge($parser->get_phrases_list($content), $parser->get_phrases_list($title),
                 $parser->get_phrases_list($the_content_feed), $parser->get_phrases_list($excerpt),
                 $parser->get_phrases_list($excerpt_rss));
-        return array('content' => $phrases, 'head' => $this->get_rendered_head_phrases($postID));
+        $head = $this->get_rendered_head_phrases($postID);
+        return array('title' => $title, 'content' => $phrases, 'head' => $head['phrases'], 'head_status' => $head['status']);
     }
 
     function register_rest_routes() {
@@ -152,16 +181,30 @@ class transposh_postpublish {
             return new WP_Error('tp_no_post', 'Unknown post', array('status' => 404));
         }
         $samples = min(50, (int) $request['samples']);
-        $groups = $this->collect_post_phrases($postID);
-        $result = array('post' => $postID, 'url' => get_permalink($postID), 'languages' => array());
+        $collected = $this->collect_post_phrases($postID);
+        $groups = array('content' => $collected['content'], 'head' => $collected['head']);
+        $max = (int) apply_filters('transposh_coverage_max_phrases', 2000);
+        if (count($groups['content']) + count($groups['head']) > $max) {
+            return new WP_Error('tp_too_many_phrases', "More than $max phrases", array('status' => 413));
+        }
+        $result = array('post' => $postID, 'url' => get_permalink($postID),
+            // head counts are meaningless unless head_status is "ok"
+            'head_status' => $collected['head_status'], 'languages' => array());
         foreach (explode(',', $this->transposh->options->viewable_languages) as $lang) {
             if ($this->transposh->options->is_default_language($lang)) {
                 continue;
             }
+            // one batched query per language instead of one per phrase
+            $this->transposh->database->prefetch_translations(array_values(array_merge($groups['content'], $groups['head'])), $lang);
             foreach ($groups as $group => $phrases) {
-                $row = array('total' => count($phrases), 'human' => 0, 'auto' => 0, 'missing' => 0, 'missing_samples' => array());
+                $row = array('total' => count($phrases), 'human' => 0, 'auto' => 0, 'missing' => 0, 'errors' => 0, 'missing_samples' => array());
                 foreach ($phrases as $phrase) {
-                    list($source, $translation) = $this->transposh->database->fetch_translation($phrase, $lang);
+                    $found = $this->transposh->database->fetch_translation($phrase, $lang);
+                    if ($found === false) {
+                        $row['errors']++; // lookup failure, not a missing translation
+                        continue;
+                    }
+                    list($source, $translation) = is_array($found) ? $found : array(null, null);
                     if (!$translation) {
                         $row['missing']++;
                         if (count($row['missing_samples']) < $samples) {
@@ -252,9 +295,11 @@ class transposh_postpublish {
                 return;
             //TODO - get comments text
             $groups = $this->collect_post_phrases($postID);
-            $title = apply_filters('the_title', get_post($postID)->post_title);
+            $title = $groups['title'];
             // content phrases plus SEO <head> phrases (title, description, OG, JSON-LD)
             $phrases = array_merge($groups['content'], $groups['head']);
+            // surfaced to the admin translate-all UI so a failed collection is visible
+            $json['head_status'] = $groups['head_status'];
             tp_logger($phrases, 4);
 
             // Add phrases from permalink
