@@ -616,6 +616,10 @@ add_action('wp_enqueue_scripts', function () {
     $url = plugins_url('../assets/lang-suggest.js', __FILE__);
     $ver = file_exists($file) ? filemtime($file) : false;
     wp_enqueue_script('tpw-lang-suggest', $url, array(), $ver, true);
+    $url2 = plugins_url('../assets/lang-dropdown.js', __FILE__);
+    $f2 = trailingslashit(dirname(__FILE__)) . '../assets/lang-dropdown.js';
+    $ver2 = @file_exists($f2) ? filemtime($f2) : false;
+    wp_enqueue_script('tpw-lang-dropdown', $url2, array(), $ver2, true);
 }, 20);
 
 ?>

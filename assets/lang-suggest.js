@@ -72,6 +72,8 @@
     var css = document.createElement('style');
     // Vertical offset: below the flag row itself so the bubble never covers it
     function topOffset() {
+        var t = document.querySelector('.tpw-dd-btn');
+        if (t) { var tr = t.getBoundingClientRect(); if (tr.bottom > 0) { return Math.round(tr.bottom) + 12; } }
         var f = widget.getBoundingClientRect();
         if (f.bottom > 0) { return Math.round(f.bottom) + 12; }
         // Widget hidden (mobile burger menu): sit below the tallest visible top bar
