@@ -21,7 +21,9 @@ def build(build_date, release=False):
     files = {}
     for folder in ['core', 'assets', 'js', 'css', 'img', 'langs', 'widgets', 'wp']:
         for path in sorted((ROOT / folder).rglob('*')):
-            if path.is_file() and '.BAK.' not in path.name and not path.name.startswith('.'):
+            # '.BAK.' files, dotfiles and macOS 'name 2.ext' duplicates are not shipped
+            if path.is_file() and '.BAK.' not in path.name and not path.name.startswith('.') \
+                    and not re.search(r' \d+\.[A-Za-z0-9]+$', path.name):
                 files[path.relative_to(ROOT).as_posix()] = path.read_bytes()
     for name in ['transposh.php', 'readme.txt', 'index.html']:
         files[name] = (ROOT / name).read_bytes()
