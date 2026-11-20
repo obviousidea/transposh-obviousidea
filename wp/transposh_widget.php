@@ -42,8 +42,165 @@ class transposh_base_widget {
         $basefile = substr($file, 0, -4);
         $widget_css = TRANSPOSH_DIR_WIDGETS . '/' . $basefile . ".css";
         if (file_exists($plugin_dir . $widget_css)) {
-            wp_enqueue_style(str_replace('/', '_', $basefile), $plugin_url . '/' . $widget_css, '', TRANSPOSH_PLUGIN_VER);
+            $handle = str_replace('/', '_', $basefile);
+            wp_enqueue_style($handle, $plugin_url . '/' . $widget_css . '?asset=20261120b', '', TRANSPOSH_PLUGIN_VER);
+            // Front-end: versioned file with crisp SVG data-URIs (per-flag override of the sprite)
+            if (!is_admin()) {
+                $inline = transposh_base_widget::flags_inline_file($plugin_dir);
+                if ($inline) {
+                    wp_enqueue_style('tpw_flags_inline', $inline['url'], array($handle), $inline['ver']);
+                }
+            }
         }
+    }
+
+    /**
+     * Parse the language code -> flag code map from core/constants.php
+     * (the FLAGS constant is not always defined at widget enqueue time).
+     */
+    static function flags_lang_map($plugin_dir) {
+        $map = get_transient('tpw_flags_lang_map');
+        if (is_array($map) && $map) {
+            return $map;
+        }
+        $map = array('en' => 'us');
+        $src = @file_get_contents(trailingslashit($plugin_dir) . 'core/constants.php');
+        if ($src && preg_match_all("/'([a-z-]{2,12})'\s*=>\s*\[[^\]]*'flag'\s*=>\s*'([a-z-]+)'/s", $src, $m, PREG_SET_ORDER)) {
+            foreach ($m as $row) {
+                $map[$row[1]] = $row[2];
+            }
+            set_transient('tpw_flags_lang_map', $map, DAY_IN_SECONDS);
+        }
+        return $map;
+    }
+
+    /**
+     * Build CSS overriding the sprite, flag by flag, with SVG data URIs (or
+     * webp tiles for heavy crests) for the active viewable languages. A flag
+     * without usable asset simply keeps the sprite.
+     */
+    /**
+     * Fingerprint of the current viewable-language list. Embedded in every
+     * generated CSS so a language enable/disable invalidates the file.
+     */
+    static function flags_lang_sig() {
+        $opts = get_option('transposh_options');
+        $viewable_raw = isset($opts['viewable_languages']) ? $opts['viewable_languages'] : array();
+        if (is_string($viewable_raw)) {
+            $viewable = array_filter(array_map('trim', explode(',', $viewable_raw)));
+        } else {
+            $viewable = (array)$viewable_raw;
+        }
+        sort($viewable);
+        return md5(implode(',', $viewable));
+    }
+
+    static function flags_inline_css($plugin_dir) {
+        $css = '';
+        $opts = get_option('transposh_options');
+        $viewable_raw = isset($opts['viewable_languages']) ? $opts['viewable_languages'] : array();
+        if (is_string($viewable_raw)) {
+            $viewable = array_filter(array_map('trim', explode(',', $viewable_raw)));
+        } else {
+            $viewable = (array)$viewable_raw;
+        }
+        $flagmap = transposh_base_widget::flags_lang_map($plugin_dir);
+        $svgdir = trailingslashit($plugin_dir) . 'assets/flags-svg/';
+        $seen = array();
+        foreach ($viewable as $code) {
+            $flag = isset($flagmap[$code]) ? $flagmap[$code] : $code;
+            if (isset($seen[$flag]) || !preg_match('/^[a-z-]+$/', $flag)) {
+                continue;
+            }
+            $seen[$flag] = 1;
+            $f = $svgdir . $flag . '.svg';
+            if (!file_exists($f)) {
+                continue; // missing SVG: this flag keeps the sprite
+            }
+            $svg = file_get_contents($f);
+            if (strlen($svg) > 10000) {
+                // heavy crest: fall back to a tiny per-flag webp tile, else keep the sprite
+                $wf = trailingslashit(dirname($svgdir)) . 'flags-tiles/' . $flag . '.webp';
+                if (file_exists($wf)) {
+                    $css .= '.trf-' . $flag . '{background:url("data:image/webp;base64,' . base64_encode(file_get_contents($wf)) . '") center/cover no-repeat!important}';
+                }
+                continue;
+            }
+            $css .= '.trf-' . $flag . '{background:url("data:image/svg+xml,' . rawurlencode($svg) . '") center/cover no-repeat!important}';
+        }
+        // Reserve the pill height server-side so the JS dropdown swap causes no layout shift (CLS)
+        $css = '/*langs:' . self::flags_lang_sig() . '*/.transposh_flags{min-height:32px}' . $css;
+        return $css;
+    }
+
+    /**
+     * Generated flags css location (path + url), or false.
+     */
+    static function flags_inline_dir() {
+        $up = wp_upload_dir();
+        if (!empty($up['error'])) {
+            return false;
+        }
+        return array('path' => trailingslashit($up['basedir']) . 'transposh/', 'url' => trailingslashit($up['baseurl']) . 'transposh/');
+    }
+
+    /**
+     * Remove generated flags css files.
+     */
+    static function flags_inline_purge() {
+        $dir = transposh_base_widget::flags_inline_dir();
+        $old = $dir ? glob($dir['path'] . 'flags-inline.*.css') : false;
+        if ($old) {
+            // Keep recent generations: warm HTML (WP Rocket/CDN) may still reference
+            // an older file name for hours. Only delete files older than 7 days.
+            foreach ($old as $o) {
+                if (filemtime($o) < time() - 7 * DAY_IN_SECONDS) {
+                    @unlink($o);
+                }
+            }
+        }
+    }
+
+    /**
+     * Returns array(url, ver) for uploads/transposh/flags-inline.<filemtime>.css,
+     * generating it when missing. False means: keep the sprite.
+     */
+    static function flags_inline_file($plugin_dir) {
+        $dir = transposh_base_widget::flags_inline_dir();
+        if (!$dir) {
+            return false;
+        }
+        $found = glob($dir['path'] . 'flags-inline.*.css');
+        if ($found) {
+            // Newest generation wins (glob sorts alphabetically, timestamps sort
+            // numerically - an older file could otherwise come first).
+            rsort($found);
+            $name = basename($found[0]);
+            if (preg_match('/^flags-inline\.(\d+)\.css$/', $name, $m)) {
+                // Stale when the viewable-language list changed since generation
+                // (a newly enabled language would otherwise fall back to the US flag).
+                $head = @file_get_contents($found[0], false, null, 0, 128);
+                if ($head !== false && strpos($head, '/*langs:' . self::flags_lang_sig() . '*/') === 0) {
+                    return array('url' => $dir['url'] . $name, 'ver' => $m[1]);
+                }
+            }
+        }
+        $css = transposh_base_widget::flags_inline_css($plugin_dir);
+        if ($css === '' || !wp_mkdir_p($dir['path'])) {
+            return false;
+        }
+        $tmp = $dir['path'] . 'flags-inline.tmp' . getmypid() . '.css';
+        if (@file_put_contents($tmp, $css) === false) {
+            return false;
+        }
+        $ver = time();
+        @touch($tmp, $ver);
+        $final = $dir['path'] . 'flags-inline.' . $ver . '.css';
+        if (!@rename($tmp, $final)) {
+            @unlink($tmp);
+            return false;
+        }
+        return array('url' => $dir['url'] . basename($final), 'ver' => (string)$ver);
     }
 
     /**
@@ -466,5 +623,46 @@ class transposh_plugin_widget extends WP_Widget {
     }
 
 }
+
+// Regenerate the flags css file when options change
+add_action('update_option_transposh_options', function () {
+    transposh_base_widget::flags_inline_purge();
+    delete_transient('tpw_flags_lang_map');
+    transposh_base_widget::flags_inline_file(dirname(__DIR__));
+});
+
+// Non-intrusive browser-language suggestion bubble (front-end only)
+add_action('wp_enqueue_scripts', function () {
+    if (is_admin()) {
+        return;
+    }
+    $opts = get_option('transposh_options');
+    $viewable_raw = isset($opts['viewable_languages']) ? $opts['viewable_languages'] : '';
+    $count = count(array_filter(array_map('trim', explode(',', $viewable_raw))));
+    if ($count < 2) {
+        return;
+    }
+    $file = dirname(__DIR__) . '/assets/lang-suggest.js';
+    $url = plugins_url('../assets/lang-suggest.js', __FILE__);
+    $ver = file_exists($file) ? filemtime($file) : false;
+    wp_enqueue_script('tpw-lang-suggest', $url, array(), $ver, true);
+    $url2 = plugins_url('../assets/lang-dropdown.js', __FILE__);
+    $f2 = trailingslashit(dirname(__FILE__)) . '../assets/lang-dropdown.js';
+    $ver2 = @file_exists($f2) ? filemtime($f2) : false;
+    wp_enqueue_script('tpw-lang-dropdown', $url2, array(), $ver2, true);
+}, 20);
+
+// WP Rocket: keep language scripts out of delay_js (bubble would wait for first interaction,
+// flag row would then swap on mousemove = CLS) and out of minify/combine (footer order breaks).
+add_filter('rocket_delay_js_exclusions', function ($ex) {
+    $ex[] = 'lang-suggest.js';
+    $ex[] = 'lang-dropdown.js';
+    return $ex;
+});
+add_filter('rocket_exclude_js', function ($ex) {
+    $ex[] = plugins_url('../assets/lang-suggest.js', __FILE__);
+    $ex[] = plugins_url('../assets/lang-dropdown.js', __FILE__);
+    return $ex;
+});
 
 ?>

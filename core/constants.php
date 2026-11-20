@@ -669,6 +669,7 @@ class transposh_consts {
             'name' => 'Japanese',
             'orig' => '日本語',
             'flag' => 'jp',
+            'locale' => 'ja_JP',
             'engines' => [
                 'b' => 'y',
                 'g' => 'y',

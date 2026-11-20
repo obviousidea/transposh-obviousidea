@@ -32,6 +32,8 @@
 /* define the .css sprites here */
 .trf {
     background-image:url(flags92.png);
+    background-image:image-set(url("flags92_rect_3x_v2.webp") type("image/webp"), url("flags92_rect_3x_v2.png") type("image/png"));
+    background-size:2208px 11px;
     height:11px;
     width:16px;
     background-repeat:no-repeat;
