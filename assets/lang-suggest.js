@@ -37,6 +37,10 @@
         if (sessionStorage.getItem(SEEN_KEY) === '1') return;
     } catch (e) { /* stockage privé : on propose quand même */ }
 
+    // Bots (dont Googlebot, navigator.language = en-US) : pas de texte parasite dans leur rendu
+    if (navigator.webdriver) return;
+    if (/bot|crawl|spider|lighthouse|headless/i.test(navigator.userAgent)) return;
+
     // Langue courante : <html lang> sinon préfixe d'URL (/fr/..., /ja/...) sinon en
     var htmlLang = norm(document.documentElement.lang);
     var seg = (location.pathname.split('/')[1] || '').toLowerCase();
@@ -50,7 +54,7 @@
     for (var i = 0; i < links.length; i++) {
         var href = links[i].getAttribute('href'), path;
         try { path = new URL(href, location.href).pathname; } catch (e) { continue; }
-        var s = norm(path.split('/')[1] || '');
+        var s = (path.split('/')[1] || '').toLowerCase();
         if (LANG_NAMES[s]) { avail[s] = href; }
         else if (!avail.en && !/^(wp-admin|wp-content|wp-includes|wp-json|xmlrpc|feed)/.test(s)) { avail.en = href; } // English = default language, unprefixed URLs
     }
@@ -162,6 +166,8 @@
     });
     setTimeout(function () {
         if (gone) return;
+        // Re-anchor at display time: the dropdown may have changed the header layout since load
+        box.style.top = topOffset() + 'px';
         box.classList.add('on');
         startTimer();
     }, DELAY_MS);

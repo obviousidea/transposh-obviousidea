@@ -11,9 +11,18 @@
         it: 'Italiano', pl: 'Polski', pt: 'Português', nl: 'Nederlands', ja: '日本語'
     };
     var ALIAS = { nb: 'no', nn: 'no', iw: 'he', 'in': 'id', fil: 'tl' };
+    var BTN_LABEL = {
+        en: 'Language: ', fr: 'Langue : ', de: 'Sprache: ', es: 'Idioma: ', it: 'Lingua: ',
+        pl: 'Język: ', pt: 'Idioma: ', nl: 'Taal: ', ja: '言語: '
+    };
     function norm(l) {
         var c = String(l || '').split(/[-_]/)[0].toLowerCase();
         return ALIAS[c] || c;
+    }
+    // Segment d'URL : correspondance STRICTE (un slug /de-stress/ ne doit pas passer pour de)
+    function segLang(seg) {
+        var s = String(seg || '').toLowerCase();
+        return NAMES[s] ? s : '';
     }
 
     var widgets = document.querySelectorAll('.transposh_flags');
@@ -21,7 +30,7 @@
 
     // Langue courante : <html lang> sinon prefixe d'URL sinon en
     var htmlLang = norm(document.documentElement.lang);
-    var seg = norm(location.pathname.split('/')[1] || '');
+    var seg = segLang(location.pathname.split('/')[1] || '');
     var current = NAMES[htmlLang] ? htmlLang : (NAMES[seg] ? seg : 'en');
 
     // Recenser les langues proposees par tous les widgets de la page
@@ -31,7 +40,7 @@
         for (var i = 0; i < links.length; i++) {
             var href = links[i].getAttribute('href'), path;
             try { path = new URL(href, location.href).pathname; } catch (e) { continue; }
-            var s = norm(path.split('/')[1] || '');
+            var s = segLang(path.split('/')[1] || '');
             if (NAMES[s]) { avail[s] = href; }
             else if (!avail.en && !/^(wp-admin|wp-content|wp-includes|wp-json|xmlrpc|feed)/.test(s)) { avail.en = href; }
         }
@@ -51,8 +60,9 @@
         '.tpw-dd-btn[aria-expanded="true"] svg{transform:rotate(180deg)}' +
         '.tpw-dd-menu{position:absolute;inset-inline-end:0;top:calc(100% + 8px);min-width:190px;max-height:min(60vh,420px);overflow:auto;' +
         'background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.16),0 2px 6px rgba(0,0,0,.08);' +
-        'padding:6px;z-index:99997;opacity:0;transform:translateY(-6px) scale(.98);pointer-events:none;transition:opacity .18s ease,transform .18s ease}' +
-        '.tpw-dd.open .tpw-dd-menu{opacity:1;transform:none;pointer-events:auto}' +
+        'padding:6px;z-index:99997;opacity:0;transform:translateY(-6px) scale(.98);visibility:hidden;' +
+        'transition:opacity .18s ease,transform .18s ease,visibility 0s linear .18s}' +
+        '.tpw-dd.open .tpw-dd-menu{opacity:1;transform:none;visibility:visible;transition-delay:0s}' +
         '.tpw-dd-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:#1f2328;text-decoration:none;white-space:nowrap}' +
         '.tpw-dd-item:hover,.tpw-dd-item:focus-visible{background:#f3f4f6;text-decoration:none}' +
         '.tpw-dd-item:focus-visible{outline:2px solid #2563eb;outline-offset:-2px}' +
@@ -76,15 +86,13 @@
             var btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'tpw-dd-btn';
-            btn.setAttribute('aria-haspopup', 'true');
             btn.setAttribute('aria-expanded', 'false');
             btn.innerHTML = '<span class="' + flagClass(current) + '" aria-hidden="true"></span><span class="tpw-ddl"></span>' + CHEV;
             btn.querySelector('.tpw-ddl').textContent = NAMES[current] || current.toUpperCase();
             var menu = document.createElement('div');
             menu.className = 'tpw-dd-menu';
-            menu.setAttribute('role', 'menu');
             var html = '';
-            // Langue courante en premier, puis ordre du navigateur... ordre natif du widget ensuite
+            // Langue courante en premier, puis ordre du widget
             var ordered = codes.slice().sort(function (a, b) {
                 if (a === current) return -1;
                 if (b === current) return 1;
@@ -92,13 +100,14 @@
             });
             for (var k = 0; k < ordered.length; k++) {
                 var c = ordered[k];
-                html += '<a class="tpw-dd-item" role="menuitem" href="' + avail[c].replace(/"/g, '&quot;') + '"' +
+                html += '<a class="tpw-dd-item" lang="' + c + '" hreflang="' + c + '" href="' + avail[c].replace(/"/g, '&quot;') + '"' +
                     (c === current ? ' aria-current="true"' : '') + '>' +
                     '<span class="' + flagClass(c) + '" aria-hidden="true"></span>' +
                     '<span class="tpw-ddn">' + NAMES[c] + '</span>' +
                     '<span class="tpw-ddc" aria-hidden="true">✓</span></a>';
             }
             menu.innerHTML = html;
+            btn.setAttribute('aria-label', (BTN_LABEL[current] || 'Language: ') + (NAMES[current] || current));
             wrap.appendChild(btn);
             wrap.appendChild(menu);
             // Masquer la rangee drapeaux d'origine (gardee en DOM pour le fallback et le SEO)

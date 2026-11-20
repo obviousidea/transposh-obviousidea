@@ -112,6 +112,8 @@ class transposh_base_widget {
             }
             $css .= '.trf-' . $flag . '{background:url("data:image/svg+xml,' . rawurlencode($svg) . '") center/cover no-repeat!important}';
         }
+        // Reserve the pill height server-side so the JS dropdown swap causes no layout shift (CLS)
+        $css = '.transposh_flags{min-height:32px}' . $css;
         return $css;
     }
 
@@ -621,5 +623,18 @@ add_action('wp_enqueue_scripts', function () {
     $ver2 = @file_exists($f2) ? filemtime($f2) : false;
     wp_enqueue_script('tpw-lang-dropdown', $url2, array(), $ver2, true);
 }, 20);
+
+// WP Rocket: keep language scripts out of delay_js (bubble would wait for first interaction,
+// flag row would then swap on mousemove = CLS) and out of minify/combine (footer order breaks).
+add_filter('rocket_delay_js_exclusions', function ($ex) {
+    $ex[] = 'lang-suggest.js';
+    $ex[] = 'lang-dropdown.js';
+    return $ex;
+});
+add_filter('rocket_exclude_js', function ($ex) {
+    $ex[] = plugins_url('../assets/lang-suggest.js', __FILE__);
+    $ex[] = plugins_url('../assets/lang-dropdown.js', __FILE__);
+    return $ex;
+});
 
 ?>
