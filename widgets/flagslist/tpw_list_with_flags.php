@@ -43,9 +43,9 @@ class tpw_list_with_flags extends transposh_base_widget {
 
         echo "<div class=\"" . NO_TRANSLATE_CLASS . " transposh_flags\" >";
         foreach ($args as $langrecord) {
-            echo "<a href=\"{$langrecord['url']}\" data-tpw-lang=\"{$langrecord['isocode']}\"" . ($langrecord['active'] ? ' class="tr_active"' : '' ) . '>' .
+            echo "<a href=\"{$langrecord['url']}\" data-tpw-lang=\"{$langrecord['isocode']}\" data-tpw-flag=\"{$langrecord['flag']}\"" . ($langrecord['active'] ? ' class="tr_active"' : '' ) . '>' .
             transposh_utils::display_flag("$plugpath/img/flags", $langrecord['flag'], $langrecord['langorig'], false) . "</a>";
-            echo "<a href=\"{$langrecord['url']}\" data-tpw-lang=\"{$langrecord['isocode']}\"" . ($langrecord['active'] ? ' class="tr_active"' : '' ) . '>' . "{$langrecord['langorig']}</a><br/>";
+            echo "<a href=\"{$langrecord['url']}\" data-tpw-lang=\"{$langrecord['isocode']}\" data-tpw-flag=\"{$langrecord['flag']}\"" . ($langrecord['active'] ? ' class="tr_active"' : '' ) . '>' . "{$langrecord['langorig']}</a><br/>";
         }
         echo "</div>";
     }

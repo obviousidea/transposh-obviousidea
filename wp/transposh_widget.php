@@ -79,6 +79,22 @@ class transposh_base_widget {
      * webp tiles for heavy crests) for the active viewable languages. A flag
      * without usable asset simply keeps the sprite.
      */
+    /**
+     * Fingerprint of the current viewable-language list. Embedded in every
+     * generated CSS so a language enable/disable invalidates the file.
+     */
+    static function flags_lang_sig() {
+        $opts = get_option('transposh_options');
+        $viewable_raw = isset($opts['viewable_languages']) ? $opts['viewable_languages'] : array();
+        if (is_string($viewable_raw)) {
+            $viewable = array_filter(array_map('trim', explode(',', $viewable_raw)));
+        } else {
+            $viewable = (array)$viewable_raw;
+        }
+        sort($viewable);
+        return md5(implode(',', $viewable));
+    }
+
     static function flags_inline_css($plugin_dir) {
         $css = '';
         $opts = get_option('transposh_options');
@@ -113,7 +129,7 @@ class transposh_base_widget {
             $css .= '.trf-' . $flag . '{background:url("data:image/svg+xml,' . rawurlencode($svg) . '") center/cover no-repeat!important}';
         }
         // Reserve the pill height server-side so the JS dropdown swap causes no layout shift (CLS)
-        $css = '.transposh_flags{min-height:32px}' . $css;
+        $css = '/*langs:' . self::flags_lang_sig() . '*/.transposh_flags{min-height:32px}' . $css;
         return $css;
     }
 
@@ -161,7 +177,12 @@ class transposh_base_widget {
             rsort($found);
             $name = basename($found[0]);
             if (preg_match('/^flags-inline\.(\d+)\.css$/', $name, $m)) {
-                return array('url' => $dir['url'] . $name, 'ver' => $m[1]);
+                // Stale when the viewable-language list changed since generation
+                // (a newly enabled language would otherwise fall back to the US flag).
+                $head = @file_get_contents($found[0], false, null, 0, 128);
+                if ($head !== false && strpos($head, '/*langs:' . self::flags_lang_sig() . '*/') === 0) {
+                    return array('url' => $dir['url'] . $name, 'ver' => $m[1]);
+                }
             }
         }
         $css = transposh_base_widget::flags_inline_css($plugin_dir);

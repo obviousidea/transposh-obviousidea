@@ -36,6 +36,7 @@
     // Recenser les langues proposees par un widget : data-tpw-lang d'abord (emit
     // par PHP, fiable y compris en mode ?lang=), slug d'URL en repli seulement si
     // AUCUN lien n'est marque (ancien HTML en cache).
+    var flagOf = {}; // isocode -> code drapeau (jp pour ja), fourni par PHP data-tpw-flag
     function collectAvail(widget) {
         var avail = {}, marked = false;
         var links = widget.querySelectorAll('a[href]');
@@ -43,7 +44,12 @@
             var href = links[i].getAttribute('href'), path, s;
             try { path = new URL(href, location.href).pathname; } catch (e) { continue; }
             var d = norm(links[i].getAttribute('data-tpw-lang') || '');
-            if (NAMES[d]) { avail[d] = href; marked = true; continue; }
+            if (NAMES[d]) {
+                avail[d] = href; marked = true;
+                var fl = norm(links[i].getAttribute('data-tpw-flag') || '');
+                if (fl) flagOf[d] = fl;
+                continue;
+            }
             if (d) continue; // marque mais langue inconnue : ne pas deviner
             var raw = (path.split('/')[1] || '').toLowerCase();
             s = segLang(raw);
@@ -82,7 +88,13 @@
 
     var CHEV = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-    function flagClass(code) { return 'tpw-ddf trf trf-' + (code === 'en' ? 'us' : code); }
+    // Le code ISO ne designe pas toujours le fichier drapeau (ja -> jp.svg,
+    // zh -> cn.svg). data-tpw-flag (PHP) fait foi ; cette table ne sert que
+    // pour le HTML en cache qui ne porte pas encore l'attribut.
+    var FLAG_FALLBACK = {ja: 'jp', zh: 'cn', ms: 'my', iw: 'il', pt: 'pt'};
+    function flagClass(code) {
+        return 'tpw-ddf trf trf-' + (flagOf[code] || FLAG_FALLBACK[code] || (code === 'en' ? 'us' : code));
+    }
 
     for (var w2 = 0; w2 < widgets.length; w2++) {
         (function (widget) {
