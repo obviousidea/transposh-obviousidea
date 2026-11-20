@@ -33,20 +33,25 @@
     var seg = segLang(location.pathname.split('/')[1] || '');
     var current = NAMES[htmlLang] ? htmlLang : (NAMES[seg] ? seg : 'en');
 
-    // Recenser les langues proposees par tous les widgets de la page
-    var avail = {};
-    for (var w = 0; w < widgets.length; w++) {
-        var links = widgets[w].querySelectorAll('a[href]');
+    // Recenser les langues proposees par un widget : data-tpw-lang d'abord (emit
+    // par PHP, fiable y compris en mode ?lang=), slug d'URL en repli seulement si
+    // AUCUN lien n'est marque (ancien HTML en cache).
+    function collectAvail(widget) {
+        var avail = {}, marked = false;
+        var links = widget.querySelectorAll('a[href]');
         for (var i = 0; i < links.length; i++) {
-            var href = links[i].getAttribute('href'), path;
+            var href = links[i].getAttribute('href'), path, s;
             try { path = new URL(href, location.href).pathname; } catch (e) { continue; }
-            var s = segLang(path.split('/')[1] || '');
+            var d = norm(links[i].getAttribute('data-tpw-lang') || '');
+            if (NAMES[d]) { avail[d] = href; marked = true; continue; }
+            if (d) continue; // marque mais langue inconnue : ne pas deviner
+            var raw = (path.split('/')[1] || '').toLowerCase();
+            s = segLang(raw);
             if (NAMES[s]) { avail[s] = href; }
-            else if (!avail.en && !/^(wp-admin|wp-content|wp-includes|wp-json|xmlrpc|feed)/.test(s)) { avail.en = href; }
+            else if (!avail.en && !/^(wp-admin|wp-content|wp-includes|wp-json|xmlrpc|feed|geodirectory|assets)$/.test(raw)) { avail.en = href; }
         }
+        return avail;
     }
-    var codes = Object.keys(avail);
-    if (codes.length < 2) return;
 
     var css = document.createElement('style');
     css.textContent =
@@ -63,7 +68,8 @@
         'padding:6px;z-index:99997;opacity:0;transform:translateY(-6px) scale(.98);visibility:hidden;' +
         'transition:opacity .18s ease,transform .18s ease,visibility 0s linear .18s}' +
         '.tpw-dd.open .tpw-dd-menu{opacity:1;transform:none;visibility:visible;transition-delay:0s}' +
-        '.tpw-dd-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:#1f2328;text-decoration:none;white-space:nowrap}' +
+        '.tpw-dd-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:#1f2328;text-decoration:none;white-space:nowrap;' +
+        'transition:background-color .15s ease}' +
         '.tpw-dd-item:hover,.tpw-dd-item:focus-visible{background:#f3f4f6;text-decoration:none}' +
         '.tpw-dd-item:focus-visible{outline:2px solid #2563eb;outline-offset:-2px}' +
         '.tpw-dd-item .tpw-ddf{width:20px;height:15px;border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.12);flex:0 0 auto}' +
@@ -80,7 +86,12 @@
 
     for (var w2 = 0; w2 < widgets.length; w2++) {
         (function (widget) {
-            if (widget.querySelector('.tpw-dd')) return;
+            // Idempotence par instance : la pilule est une SOEUR du widget, pas un enfant
+            if (widget.getAttribute('data-tpw-dd') === '1') return;
+            var avail = collectAvail(widget);
+            var codes = Object.keys(avail);
+            if (codes.length < 2) return;
+            widget.setAttribute('data-tpw-dd', '1'); // marque avant montage: un echec ne sera pas rejoue
             var wrap = document.createElement('div');
             wrap.className = 'tpw-dd no_translate';
             var btn = document.createElement('button');
@@ -110,21 +121,31 @@
             btn.setAttribute('aria-label', (BTN_LABEL[current] || 'Language: ') + (NAMES[current] || current));
             wrap.appendChild(btn);
             wrap.appendChild(menu);
-            // Masquer la rangee drapeaux d'origine (gardee en DOM pour le fallback et le SEO)
-            widget.style.display = 'none';
+            // Inserer d'abord, masquer la rangee ensuite : un echec d'insertion
+            // laisse le widget serveur visible (le fallback ne peut pas disparaitre).
             var holder = document.createElement('div');
             holder.style.display = 'inline-block';
             holder.appendChild(wrap);
             widget.parentNode.insertBefore(holder, widget);
+            widget.style.display = 'none';
 
             function open() {
                 // L'utilisateur interagit volontairement : la bulle de suggestion devient inutile
                 var sug = document.querySelector('.tpw-suggest');
                 if (sug) sug.remove();
+                document.dispatchEvent(new CustomEvent('tpw-dd-open'));
                 wrap.classList.add('open');
                 btn.setAttribute('aria-expanded', 'true');
                 var first = menu.querySelector('.tpw-dd-item');
-                if (first) first.focus();
+                if (first) {
+                    // Le theme applique transition:all (specificite forte) aux liens
+                    // de widgets : visibility herite du flip avec retard. Coupure
+                    // synchrone + recalc forcee (rAF n'est pas garantie partout).
+                    first.style.transition = 'none';
+                    void first.offsetWidth;
+                    first.focus();
+                    setTimeout(function () { first.style.transition = ''; }, 60);
+                }
             }
             function close(back) {
                 wrap.classList.remove('open');
@@ -139,11 +160,19 @@
             });
             document.addEventListener('keydown', function (e) {
                 if (!wrap.classList.contains('open')) return;
-                if (e.key === 'Escape') { close(true); return; }
+                // Clavier limite au composant : un Tab hors du panneau ne doit pas
+                // se faire voler les fleches, ni un Echap d'un autre controle le fermer.
+                var inside = wrap.contains(document.activeElement);
+                if (e.key === 'Escape') { if (inside) { close(true); } return; }
+                if (!inside) return;
                 var items = [].slice.call(menu.querySelectorAll('.tpw-dd-item'));
                 var idx = items.indexOf(document.activeElement);
                 if (e.key === 'ArrowDown') { e.preventDefault(); items[(idx + 1) % items.length].focus(); }
                 else if (e.key === 'ArrowUp') { e.preventDefault(); items[(idx - 1 + items.length) % items.length].focus(); }
+            });
+            // Le focus sort du composant : on referme (le panneau masque ne piege plus le focus)
+            wrap.addEventListener('focusout', function (e) {
+                if (wrap.classList.contains('open') && e.relatedTarget && !wrap.contains(e.relatedTarget)) { close(false); }
             });
         })(widgets[w2]);
     }

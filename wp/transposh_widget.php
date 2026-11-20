@@ -135,8 +135,12 @@ class transposh_base_widget {
         $dir = transposh_base_widget::flags_inline_dir();
         $old = $dir ? glob($dir['path'] . 'flags-inline.*.css') : false;
         if ($old) {
+            // Keep recent generations: warm HTML (WP Rocket/CDN) may still reference
+            // an older file name for hours. Only delete files older than 7 days.
             foreach ($old as $o) {
-                @unlink($o);
+                if (filemtime($o) < time() - 7 * DAY_IN_SECONDS) {
+                    @unlink($o);
+                }
             }
         }
     }
@@ -152,6 +156,9 @@ class transposh_base_widget {
         }
         $found = glob($dir['path'] . 'flags-inline.*.css');
         if ($found) {
+            // Newest generation wins (glob sorts alphabetically, timestamps sort
+            // numerically - an older file could otherwise come first).
+            rsort($found);
             $name = basename($found[0]);
             if (preg_match('/^flags-inline\.(\d+)\.css$/', $name, $m)) {
                 return array('url' => $dir['url'] . $name, 'ver' => $m[1]);

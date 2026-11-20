@@ -6,7 +6,7 @@
 (function () {
     'use strict';
     var DELAY_MS = 1600, AUTOHIDE_MS = 14000;
-    var KEY = 'tpw_lang_suggest_no', SEEN_KEY = 'tpw_lang_suggest_seen', TTL_MS = 90 * 24 * 3600 * 1000;
+    var KEY = 'tpw_lang_suggest_no', SEEN_KEY = 'tpw_lang_suggest_seen', SHOWN_KEY = 'tpw_lang_suggest_shown', TTL_MS = 90 * 24 * 3600 * 1000;
     var LANG_NAMES = {
         en: 'English', fr: 'Français', de: 'Deutsch', es: 'Español',
         it: 'Italiano', pl: 'Polski', pt: 'Português', nl: 'Nederlands', ja: '日本語'
@@ -35,6 +35,9 @@
         var no = parseInt(localStorage.getItem(KEY), 10);
         if (no && Date.now() - no < TTL_MS) return;
         if (sessionStorage.getItem(SEEN_KEY) === '1') return;
+        // Vue il y a moins de 24 h (partage entre onglets) : ne pas relancer
+        var shown = parseInt(localStorage.getItem(SHOWN_KEY), 10);
+        if (shown && Date.now() - shown < 24 * 3600 * 1000) return;
     } catch (e) { /* stockage privé : on propose quand même */ }
 
     // Bots (dont Googlebot, navigator.language = en-US) : pas de texte parasite dans leur rendu
@@ -54,9 +57,12 @@
     for (var i = 0; i < links.length; i++) {
         var href = links[i].getAttribute('href'), path;
         try { path = new URL(href, location.href).pathname; } catch (e) { continue; }
+        var d = norm(links[i].getAttribute('data-tpw-lang') || '');
+        if (LANG_NAMES[d]) { avail[d] = href; continue; }
+        if (d) continue; // marque mais langue inconnue : ne pas deviner
         var s = (path.split('/')[1] || '').toLowerCase();
         if (LANG_NAMES[s]) { avail[s] = href; }
-        else if (!avail.en && !/^(wp-admin|wp-content|wp-includes|wp-json|xmlrpc|feed)/.test(s)) { avail.en = href; } // English = default language, unprefixed URLs
+        else if (!avail.en && !/^(wp-admin|wp-content|wp-includes|wp-json|xmlrpc|feed|geodirectory|assets)$/.test(s)) { avail.en = href; } // English = default language, unprefixed URLs
     }
 
     // Si la langue de la page figure n'importe où dans les préférences du
@@ -76,7 +82,9 @@
     var css = document.createElement('style');
     // Vertical offset: below the flag row itself so the bubble never covers it
     function topOffset() {
-        var t = document.querySelector('.tpw-dd-btn');
+        // Premiere pilule VISIBLE (un widget footer ne doit pas servir d'ancre)
+        var pills = document.querySelectorAll('.tpw-dd-btn'), t = null;
+        for (var p = 0; p < pills.length; p++) { if (pills[p].offsetParent !== null) { t = pills[p]; break; } }
         if (t) { var tr = t.getBoundingClientRect(); if (tr.bottom > 0) { return Math.round(tr.bottom) + 12; } }
         var f = widget.getBoundingClientRect();
         if (f.bottom > 0) { return Math.round(f.bottom) + 12; }
@@ -96,7 +104,7 @@
         '.tpw-suggest{position:fixed;inset-inline-end:16px;top:' + topPx + 'px;z-index:99998;display:flex;align-items:center;gap:10px;' +
         'max-width:340px;padding:10px 12px;border-radius:12px;background:#fff;color:#1f2328;' +
         'box-shadow:0 6px 24px rgba(0,0,0,.16),0 1px 3px rgba(0,0,0,.08);font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;' +
-        'opacity:0;transform:translateY(-8px);transition:opacity .25s ease,transform .25s ease}' +
+        'opacity:0;visibility:hidden;transform:translateY(-8px);transition:opacity .25s ease,transform .25s ease}' +
         '.tpw-suggest.on{opacity:1;transform:none}' +
         '.tpw-suggest .tpw-f{flex:0 0 auto;width:20px;height:15px;border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.12)}' +
         '.tpw-suggest .tpw-t{flex:1 1 auto}' +
@@ -168,7 +176,17 @@
         if (gone) return;
         // Re-anchor at display time: the dropdown may have changed the header layout since load
         box.style.top = topOffset() + 'px';
+        box.style.visibility = 'visible';
         box.classList.add('on');
+        try { localStorage.setItem(SHOWN_KEY, String(Date.now())); } catch (e) {}
         startTimer();
+        // La pilule grandit quand les polices du theme se chargent (19 -> 32 px) :
+        // re-ancre une fois les fonts stabilisees pour garder le degagement.
+        if (document.fonts && document.fonts.ready && document.fonts.ready.then) {
+            document.fonts.ready.then(function () { if (!gone) { box.style.top = topOffset() + 'px'; } });
+        }
     }, DELAY_MS);
+    // Le dropdown est le point d'entree conscient : l'ouverture de la pilule ferme
+    // proprement la bulle (delais + ecouteurs annules, pas un simple remove).
+    document.addEventListener('tpw-dd-open', function () { dismiss(false); });
 })();

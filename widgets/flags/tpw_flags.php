@@ -39,7 +39,7 @@ class tpw_flags extends transposh_base_widget {
 
         echo "<div class=\"" . NO_TRANSLATE_CLASS . " transposh_flags\" >";
         foreach ($args as $langrecord) {
-            echo "<a href=\"{$langrecord['url']}\"" . ($langrecord['active'] ? ' class="tr_active"' : '' ) . '>' .
+            echo "<a href=\"{$langrecord['url']}\" data-tpw-lang=\"{$langrecord['isocode']}\"" . ($langrecord['active'] ? ' class="tr_active"' : '' ) . '>' .
             transposh_utils::display_flag("$plugpath/img/flags", $langrecord['flag'], $langrecord['langorig'], false) .
             "</a>";
         }
