@@ -29,7 +29,7 @@ class tpw_select2 extends transposh_base_widget {
     }
     
     static function tp_widget_css($file, $dir, $url) {
-        wp_enqueue_style("flags_tpw_flags_css", "$url/widgets/flags/tpw_flags_css.css?asset=20261120", array(), TRANSPOSH_PLUGIN_VER);
+        wp_enqueue_style("flags_tpw_flags_css", "$url/widgets/flags/tpw_flags_css.css?asset=20261120b", array(), TRANSPOSH_PLUGIN_VER);
         wp_enqueue_style("select2", "$url/widgets/select2/select2.css", array(), TRANSPOSH_PLUGIN_VER);
     }
     
