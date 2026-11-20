@@ -19,7 +19,7 @@ SLUG = 'transposh-translation-filter-for-wordpress'
 def build(build_date, release=False):
     version = re.search(r'^\s*Version:\s*(\S+)', (ROOT / 'transposh.php').read_text(), re.M).group(1)
     files = {}
-    for folder in ['core', 'js', 'css', 'img', 'langs', 'widgets', 'wp']:
+    for folder in ['core', 'assets', 'js', 'css', 'img', 'langs', 'widgets', 'wp']:
         for path in sorted((ROOT / folder).rglob('*')):
             if path.is_file() and '.BAK.' not in path.name and not path.name.startswith('.'):
                 files[path.relative_to(ROOT).as_posix()] = path.read_bytes()
