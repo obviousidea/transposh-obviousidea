@@ -44,11 +44,11 @@ class transposh_base_widget {
         if (file_exists($plugin_dir . $widget_css)) {
             $handle = str_replace('/', '_', $basefile);
             wp_enqueue_style($handle, $plugin_url . '/' . $widget_css . '?asset=20261120b', '', TRANSPOSH_PLUGIN_VER);
-            // Front-end: inline crisp SVG data-URI for active languages, no sprite request
+            // Front-end: versioned file with crisp SVG data-URIs (per-flag override of the sprite)
             if (!is_admin()) {
-                $inline = transposh_base_widget::flags_inline_css($plugin_dir);
+                $inline = transposh_base_widget::flags_inline_file($plugin_dir);
                 if ($inline) {
-                    wp_add_inline_style($handle, $inline);
+                    wp_enqueue_style('tpw_flags_inline', $inline['url'], array($handle), $inline['ver']);
                 }
             }
         }
@@ -75,14 +75,11 @@ class transposh_base_widget {
     }
 
     /**
-     * Build inline CSS replacing the sprite with per-flag SVG data URIs for
-     * the active viewable languages. Cached in a 12h transient.
+     * Build CSS overriding the sprite, flag by flag, with SVG data URIs (or
+     * webp tiles for heavy crests) for the active viewable languages. A flag
+     * without usable asset simply keeps the sprite.
      */
     static function flags_inline_css($plugin_dir) {
-        $css = get_transient('tpw_flags_inline_css');
-        if ($css !== false) {
-            return $css;
-        }
         $css = '';
         $opts = get_option('transposh_options');
         $viewable_raw = isset($opts['viewable_languages']) ? $opts['viewable_languages'] : array();
@@ -96,33 +93,84 @@ class transposh_base_widget {
         $seen = array();
         foreach ($viewable as $code) {
             $flag = isset($flagmap[$code]) ? $flagmap[$code] : $code;
-            if (isset($seen[$flag])) {
+            if (isset($seen[$flag]) || !preg_match('/^[a-z-]+$/', $flag)) {
                 continue;
             }
             $seen[$flag] = 1;
             $f = $svgdir . $flag . '.svg';
             if (!file_exists($f)) {
-                // missing SVG: keep the sprite for everything
-                return '';
+                continue; // missing SVG: this flag keeps the sprite
             }
             $svg = file_get_contents($f);
             if (strlen($svg) > 10000) {
-                // heavy crest: fall back to a tiny per-flag webp tile
+                // heavy crest: fall back to a tiny per-flag webp tile, else keep the sprite
                 $wf = trailingslashit(dirname($svgdir)) . 'flags-tiles/' . $flag . '.webp';
                 if (file_exists($wf)) {
-                    $css .= '.trf-' . $flag . '{background-image:url("data:image/webp;base64,' . base64_encode(file_get_contents($wf)) . '")!important}';
-                    continue;
+                    $css .= '.trf-' . $flag . '{background:url("data:image/webp;base64,' . base64_encode(file_get_contents($wf)) . '") center/cover no-repeat!important}';
                 }
-                // no tile either: keep the sprite for everything
-                return '';
+                continue;
             }
-            $css .= '.trf-' . $flag . '{background-image:url("data:image/svg+xml,' . rawurlencode($svg) . '")!important}';
-        }
-        if ($css) {
-            $css = '.trf{background-image:none!important;background-size:100% 100%!important}' . $css;
-            set_transient('tpw_flags_inline_css', $css, 12 * HOUR_IN_SECONDS);
+            $css .= '.trf-' . $flag . '{background:url("data:image/svg+xml,' . rawurlencode($svg) . '") center/cover no-repeat!important}';
         }
         return $css;
+    }
+
+    /**
+     * Generated flags css location (path + url), or false.
+     */
+    static function flags_inline_dir() {
+        $up = wp_upload_dir();
+        if (!empty($up['error'])) {
+            return false;
+        }
+        return array('path' => trailingslashit($up['basedir']) . 'transposh/', 'url' => trailingslashit($up['baseurl']) . 'transposh/');
+    }
+
+    /**
+     * Remove generated flags css files.
+     */
+    static function flags_inline_purge() {
+        $dir = transposh_base_widget::flags_inline_dir();
+        $old = $dir ? glob($dir['path'] . 'flags-inline.*.css') : false;
+        if ($old) {
+            foreach ($old as $o) {
+                @unlink($o);
+            }
+        }
+    }
+
+    /**
+     * Returns array(url, ver) for uploads/transposh/flags-inline.<filemtime>.css,
+     * generating it when missing. False means: keep the sprite.
+     */
+    static function flags_inline_file($plugin_dir) {
+        $dir = transposh_base_widget::flags_inline_dir();
+        if (!$dir) {
+            return false;
+        }
+        $found = glob($dir['path'] . 'flags-inline.*.css');
+        if ($found) {
+            $name = basename($found[0]);
+            if (preg_match('/^flags-inline\.(\d+)\.css$/', $name, $m)) {
+                return array('url' => $dir['url'] . $name, 'ver' => $m[1]);
+            }
+        }
+        $css = transposh_base_widget::flags_inline_css($plugin_dir);
+        if ($css === '' || !wp_mkdir_p($dir['path'])) {
+            return false;
+        }
+        $tmp = $dir['path'] . 'flags-inline.tmp' . getmypid() . '.css';
+        if (@file_put_contents($tmp, $css) === false) {
+            return false;
+        }
+        $ver = time();
+        @touch($tmp, $ver);
+        $final = $dir['path'] . 'flags-inline.' . $ver . '.css';
+        if (!@rename($tmp, $final)) {
+            @unlink($tmp);
+            return false;
+        }
+        return array('url' => $dir['url'] . basename($final), 'ver' => (string)$ver);
     }
 
     /**
@@ -546,9 +594,11 @@ class transposh_plugin_widget extends WP_Widget {
 
 }
 
-// Invalidate the inline flags CSS cache when language options change
+// Regenerate the flags css file when options change
 add_action('update_option_transposh_options', function () {
-    delete_transient('tpw_flags_inline_css');
+    transposh_base_widget::flags_inline_purge();
+    delete_transient('tpw_flags_lang_map');
+    transposh_base_widget::flags_inline_file(dirname(__DIR__));
 });
 
 // Non-intrusive browser-language suggestion bubble (front-end only)

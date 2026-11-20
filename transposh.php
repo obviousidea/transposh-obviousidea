@@ -8,6 +8,8 @@
   Version: 2026.11.8
   Author URI: https://github.com/obviousidea/transposh-obviousidea
   License: GPL (https://www.gnu.org/licenses/gpl.txt)
+  Requires at least: 6.0
+  Requires PHP: 8.1
   Text Domain: transposh
   Domain Path: /langs
  */
