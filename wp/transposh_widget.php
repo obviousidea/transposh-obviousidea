@@ -551,4 +551,21 @@ add_action('update_option_transposh_options', function () {
     delete_transient('tpw_flags_inline_css');
 });
 
+// Non-intrusive browser-language suggestion bubble (front-end only)
+add_action('wp_enqueue_scripts', function () {
+    if (is_admin()) {
+        return;
+    }
+    $opts = get_option('transposh_options');
+    $viewable_raw = isset($opts['viewable_languages']) ? $opts['viewable_languages'] : '';
+    $count = count(array_filter(array_map('trim', explode(',', $viewable_raw))));
+    if ($count < 2) {
+        return;
+    }
+    $file = dirname(__DIR__) . '/assets/lang-suggest.js';
+    $url = plugins_url('../assets/lang-suggest.js', __FILE__);
+    $ver = file_exists($file) ? filemtime($file) : false;
+    wp_enqueue_script('tpw-lang-suggest', $url, array(), $ver, true);
+}, 20);
+
 ?>
