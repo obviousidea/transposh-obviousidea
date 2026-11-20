@@ -164,9 +164,8 @@ class transposh_langops {
         if ($changed) {
             $options->viewable_languages = implode(',', $viewable);
             $options->sorted_languages = implode(',', $sorted);
-            $options->update_options();
             if (is_object($GLOBALS['wp_rewrite'])) {
-                $GLOBALS['wp_rewrite']->flush_rules(false);
+                $GLOBALS['wp_rewrite']->flush_rules();
             }
             if (isset($this->transposh->database)) {
                 $this->transposh->database->cache_clean();
