@@ -188,6 +188,10 @@ class transposh_plugin_admin {
                 $this->transposh->options->ollama_api_key = TP_FROM_POST;
                 $this->transposh->options->ollama_model = TP_FROM_POST;
                 $this->transposh->options->ollama_prompt = TP_FROM_POST;
+                $this->transposh->options->openai_endpoint = TP_FROM_POST;
+                $this->transposh->options->openai_api_key = TP_FROM_POST;
+                $this->transposh->options->openai_model = TP_FROM_POST;
+                $this->transposh->options->openai_prompt = TP_FROM_POST;
                 tp_logger($_POST['engines']);
                 foreach ($_POST['engines'] as $engine) {
                     $sorted_engines[$engine] = $engine;
@@ -742,6 +746,19 @@ Please note that while Transposh currently offers a hosted LibreTranslate servic
         $this->textinput($this->transposh->options->ollama_endpoint_o
             , array('ollama', __('Ollama Endpoint', TRANSPOSH_TEXT_DOMAIN))
             , __('Endpoint URL', TRANSPOSH_TEXT_DOMAIN), 100, 'keys');
+        $this->textinput($this->transposh->options->openai_endpoint_o
+            , array('openai', __('OpenAI-compatible LLM Endpoint', TRANSPOSH_TEXT_DOMAIN))
+            , __('Endpoint URL (OpenRouter, oMLX, vLLM...)', TRANSPOSH_TEXT_DOMAIN), 100, 'keys');
+        $this->textinput($this->transposh->options->openai_api_key_o
+            , ''
+            , __('API Key', TRANSPOSH_TEXT_DOMAIN), 60, 'keys', true);
+        $this->textinput($this->transposh->options->openai_model_o
+            , ''
+            , __('Model', TRANSPOSH_TEXT_DOMAIN), 60, 'keys');
+        $this->textareainput($this->transposh->options->openai_prompt_o
+            , ''
+            , __('Prompt Template', TRANSPOSH_TEXT_DOMAIN), 6, 100, 'keys');
+        echo '<p><em>' . esc_html__('OpenAI-compatible chat completions API. Example OpenRouter: endpoint https://openrouter.ai/api/v1, model anthropic/claude-sonnet-4.5. Uses /chat/completions; leave model empty to use the server default.', TRANSPOSH_TEXT_DOMAIN) . '</em></p>';
         $this->textinput($this->transposh->options->ollama_api_key_o
             , ''
             , __('API Key', TRANSPOSH_TEXT_DOMAIN), 60, 'keys', true);

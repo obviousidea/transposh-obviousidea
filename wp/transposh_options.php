@@ -280,6 +280,10 @@ class transposh_plugin_options {
         $this->register_option('libretranslate_server', TP_OPT_STRING);
         $this->register_option('ollama_endpoint', TP_OPT_STRING);
         $this->register_option('ollama_api_key', TP_OPT_STRING);
+        $this->register_option('openai_endpoint', TP_OPT_STRING);
+        $this->register_option('openai_api_key', TP_OPT_STRING);
+        $this->register_option('openai_model', TP_OPT_STRING);
+        $this->register_option('openai_prompt', TP_OPT_STRING, "traduit {{text}} de {{source_language}} vers {{target_language}}, tu es un moteur de traduction, ne reponds que la traduction sans aucun ajout ou commentaire, tu peux garder le markdown d'origine et l'appliquer a la nouvelle traduction");
         $this->register_option('ollama_model', TP_OPT_STRING, 'ministral-3:8b');
         $this->register_option('ollama_prompt', TP_OPT_STRING, "traduit {{text}} de {{source_language}} vers {{target_language}}, tu es un moteur de traduction, ne reponds que la traduction sans aucun ajout ou commentaire, tu peux garder le markdown d'origine et l'appliquer a la nouvelle traduction");
         $this->register_option('preferred_translators', TP_OPT_STRING, 'g,b,y,a,u,o');

@@ -4,7 +4,7 @@ Donate link: http://transposh.org/donate/
 Tags: translation, translate, i18n, widget, filter, buddypress, bilingual, multilingual, transposh, language, crowdsourcing, google translate, bing translate, context, wiki, RTL, Hebrew, Spanish, French, Russian, English, Arabic, Portuguese
 Requires at least: 5.8
 Tested up to: 7.1.4
-Stable tag: 2026.11.7
+Stable tag: 2026.11.8
 
 Transposh adds best of breed translation support to wordpress, more than a 100 languages are automatically translated and can be manually corrected with ease.
 
@@ -12,6 +12,11 @@ Transposh adds best of breed translation support to wordpress, more than a 100 l
 Transposh translation filter for WordPress offers a unique approach to blog translation. It allows your blog to combine automatic translation with human translation aided by your users with an easy to use in-context interface.
 
 == Changelog ==
+
+= 2026.11.8 =
+* Add an OpenAI-compatible LLM translation engine (letter "r"): works with OpenRouter, oMLX, vLLM, LM Studio and any server exposing /chat/completions. Endpoint, API key, model and prompt template are configurable in Translation Engines; the model may be left empty to use the server default. The engine answers in every language Transposh knows (no per-language code table needed), uses temperature 0, protects the site's protected terms, and strips markdown fences or quotes some models add around the answer.
+* Add admin-only REST routes for language operations, for automation without driving the languages form: GET transposh/v1/languages (every language with active flag, position, supported engines and dictionary row count), POST transposh/v1/languages/<code> with {"active": true|false} and optionally {"engines": ["b","r"]} (updates the viewable and sorted lists, the per-language engine overrides, flushes rewrite rules and purges the dictionary cache), and GET transposh/v1/languages/<code>/stats (dictionary rows, last update, breakdown by engine).
+* No change to the parser, the dictionary layer, page-cache invalidation, existing engines or the sitemap code.
 
 = 2026.11.7 =
 * Add an engine health monitor: per-day counters of calls, phrases and characters for each engine (no text, key or visitor data stored, kept 14 days), a real one-word test every day with WP-Cron, and an e-mail alert after 3 failed calls in a row (at most one per engine and error type every 24 hours, then one "works again" e-mail). A failed daily test alerts at once.
