@@ -3,6 +3,17 @@
 Releases of this fork first (2026.11.x and 1.0.15), then the history inherited from upstream Transposh.
 `readme.txt` keeps the WordPress-format list of the recent versions.
 
+## 2026.11.8
+
+- Add an OpenAI-compatible LLM translation engine (letter "r"): works with OpenRouter, oMLX, vLLM, LM Studio and any server exposing /chat/completions. Endpoint, API key, model and prompt template are configurable in Translation Engines; the model may be left empty to use the server default. The engine answers in every language Transposh knows (no per-language code table needed), uses temperature 0, protects the site's protected terms, and strips markdown fences or quotes some models add around the answer.
+- Add admin-only REST routes for language operations: GET transposh/v1/languages (every language with active flag, position, supported engines and dictionary row count), POST transposh/v1/languages/<code> with {"active": true|false} and optionally {"engines": ["b","r"]}, and GET transposh/v1/languages/<code>/stats (dictionary rows, last update, breakdown by engine).
+- Fix languages whose flag file is named after the territory rather than the ISO code (Japanese jp.svg, Chinese cn.svg, and others) rendering the US flag in the dropdown and in the language-suggestion bubble: the widget links now carry a data-tpw-flag attribute with the real flag code, and both scripts read it, with an ISO-to-flag fallback table for HTML cached before the upgrade.
+- Fix the generated flags CSS never regenerating after a language is enabled or disabled: every generated file embeds a fingerprint of the viewable-language list and is rebuilt automatically when the list changes. Previously a newly enabled language kept serving the stale CSS and fell back to the US flag until the file was deleted by hand.
+- Language-suggestion bubble: the anchor pill must now be inside the initial viewport (a footer pill below the fold no longer anchors the bubble or spends the 24-hour shown-once mark), a peer tab's shown-once mark is re-checked at display time, and the URL-segment language guess is disabled as soon as any widget link carries data-tpw-lang (fixes language detection in ?lang= mode).
+- Add the ja_JP locale to the language registry so the parser rewrites og:locale on Japanese pages; a bare "ja" failed the territorial check and left og:locale at the site default.
+- Fix release packaging: build/package.py shipped without the assets/ folder (dropdown and bubble scripts, flag SVGs), so installing a release ZIP on another site reproduced the US-flag bug. Release ZIPs now include assets/.
+- No change to the parser phrase handling, the dictionary layer, page-cache invalidation, existing engines or the sitemap code. Dictionary translations are site data and are not bundled.
+
 ## 2026.11.7
 
 - Add an engine health monitor: per-day counters of calls, phrases and characters for each engine (no text, key or visitor data stored, kept 14 days), a real one-word test every day with WP-Cron, and an e-mail alert after 3 failed calls in a row (at most one per engine and error type every 24 hours, then one "works again" e-mail). A failed daily test alerts at once.
