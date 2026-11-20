@@ -5,7 +5,7 @@
   Plugin URI: https://github.com/obviousidea/transposh-obviousidea
   Description: Translation filter for WordPress. ObviousIdea fork, based on <a href="https://transposh.org/">Transposh</a> by Team Transposh. Configure languages on the <a href="admin.php?page=tp_main">settings page</a>. Development and issues: <a href="https://github.com/obviousidea/transposh-obviousidea">GitHub</a>.
   Author: Team Transposh and ObviousIdea
-  Version: 2026.11.7
+  Version: 2026.11.8
   Author URI: https://github.com/obviousidea/transposh-obviousidea
   License: GPL (https://www.gnu.org/licenses/gpl.txt)
   Text Domain: transposh
@@ -44,6 +44,7 @@ require_once("wp/transposh_backup.php");
 require_once("wp/transposh_3rdparty.php");
 require_once("wp/transposh_mail.php");
 require_once("wp/transposh_engine_monitor.php");
+require_once("wp/transposh_langops.php");
 //require_once("wp/transposh_wpmenu.php");
 
 /**
@@ -75,6 +76,8 @@ class transposh_plugin {
 
     /** @var transposh_engine_monitor Machine translation counters, failure alerts */
     public $engine_monitor;
+    /** @var transposh_langops REST language operations */
+    public $langops;
 
     // list of properties
     /** @var string The site url */
@@ -137,6 +140,7 @@ class transposh_plugin {
         $this->third_party = new transposh_3rdparty($this);
         $this->mail = new transposh_mail($this);
         $this->engine_monitor = new transposh_engine_monitor($this);
+        $this->langops = new transposh_langops($this);
 
         // initialize logger
         if ($this->options->debug_enable) {
@@ -1541,6 +1545,11 @@ class transposh_plugin {
                     if (!$sl) $sl = $this->options->default_language;
                     $source = 7;
                     $result = transposh_translate::get_ollama_translation($tl, $sl, $q);
+                    break;
+                case 'r': // OpenAI-compatible LLM (OpenRouter, oMLX, vLLM)
+                    if (!$sl) $sl = $this->options->default_language;
+                    $source = 8;
+                    $result = transposh_translate::get_openai_translation($tl, $sl, $q);
                     break;
                 case 'a': // apertium
                     if (!$sl) $sl = 'en'; // setting default source language to english

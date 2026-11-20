@@ -73,7 +73,7 @@ class transposh_engine_monitor {
     }
 
     static function engine_names() {
-        return array('b' => 'Microsoft Translator', 'g' => 'Google', 'o' => 'Ollama', 'a' => 'Apertium',
+        return array('b' => 'Microsoft Translator', 'g' => 'Google', 'o' => 'Ollama', 'r' => 'OpenAI LLM', 'a' => 'Apertium',
             'y' => 'Yandex', 'u' => 'Baidu', 'l' => 'LibreTranslate');
     }
 

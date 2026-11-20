@@ -1714,6 +1714,9 @@ class transposh_consts {
         'o' => array(
             'name' => 'Ollama',
         ),
+        'r' => array(
+            'name' => 'OpenAI LLM',
+        ),
         'u' => array(
             'name' => 'Baidu',
         ),
@@ -1813,7 +1816,7 @@ class transposh_consts {
      * @return bool - is language supported by engine?
      */
     public static function is_supported_engine($lang, $engine) {
-        if ($engine === 'o') {
+        if ($engine === 'o' || $engine === 'r') {
             return isset(self::$languages[$lang]);
         }
         $overrides = get_option(TRANSPOSH_OPTIONS_LANGUAGE_OVERRIDES, array());
@@ -1829,7 +1832,7 @@ class transposh_consts {
      * @return string - conversion of this engine?
      */
     public static function get_engine_lang_code($lang, $engine) {
-        if ($engine === 'o') {
+        if ($engine === 'o' || $engine === 'r') {
             return $lang;
         }
         $overrides = get_option(TRANSPOSH_OPTIONS_LANGUAGE_OVERRIDES, array());
@@ -1893,7 +1896,7 @@ class transposh_consts {
 define('TRANSLATOR', 'translator');
 
 //Define for transposh plugin version
-define('TRANSPOSH_PLUGIN_VER', '2026.11.7');
+define('TRANSPOSH_PLUGIN_VER', '2026.11.8');
 
 //Current jQuery UI
 define('JQUERYUI_VER', '1.14.1');

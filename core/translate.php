@@ -867,6 +867,137 @@ class transposh_translate
     }
 
     /******************************************
+     * Proxied translation for OpenAI-compatible LLMs
+     * (OpenRouter, oMLX, vLLM, LM Studio, ...)
+     *****************************************/
+    private static function getOpenAIConfig(): array {
+        global $my_transposh_plugin;
+
+        return array(
+            'endpoint' => rtrim(trim((string)$my_transposh_plugin->options->openai_endpoint), '/'),
+            'api_key' => trim((string)$my_transposh_plugin->options->openai_api_key),
+            'model' => trim((string)$my_transposh_plugin->options->openai_model),
+            'prompt' => trim((string)$my_transposh_plugin->options->openai_prompt),
+        );
+    }
+
+    private static function getOpenAIChatEndpoint(string $endpoint): string {
+        if (preg_match('#/chat/completions$#', $endpoint)) {
+            return $endpoint;
+        }
+        return rtrim($endpoint, '/') . '/chat/completions';
+    }
+
+    private static function parseOpenAIResponse($response) {
+        $data = json_decode($response, true);
+        if (!is_array($data)) {
+            return false;
+        }
+        if (isset($data['error'])) {
+            $msg = is_array($data['error']) ? (string)($data['error']['message'] ?? '') : (string)$data['error'];
+            tp_logger('OpenAI LLM API error: ' . preg_replace('/\s+/', ' ', substr($msg, 0, 200)), 1);
+            return false;
+        }
+        if (!isset($data['choices'][0]['message']['content'])) {
+            return false;
+        }
+        $text = trim((string)$data['choices'][0]['message']['content']);
+        // strip markdown fences or surrounding quotes some models add
+        $text = preg_replace('/^```[a-z]*\s*|\s*```$/i', '', $text);
+        if (strlen($text) > 1 && $text[0] === '"' && substr($text, -1) === '"') {
+            $text = substr($text, 1, -1);
+        }
+        return $text;
+    }
+
+    private static function requestOpenAITranslation(string $endpoint, string $api_key, string $model, string $prompt, string $source_lang, string $target_lang, string $text) {
+        list($protected_text, $restore_map) = self::protectTermsInText($text, self::getProtectedTerms());
+        $final_prompt = self::formatOllamaPrompt($prompt, $protected_text, $source_lang, $target_lang);
+
+        $payload = array('temperature' => 0, 'max_tokens' => 512, 'messages' => array(
+            array('role' => 'system', 'content' => $final_prompt),
+            array('role' => 'user', 'content' => $protected_text),
+        ));
+        if ($model !== '') {
+            $payload['model'] = $model;
+        }
+
+        $headers = array('Content-Type: application/json');
+        if ($api_key !== '') {
+            $headers[] = 'Authorization: Bearer ' . $api_key;
+        }
+
+        $response = self::executeCurlRequest(
+            self::getOpenAIChatEndpoint($endpoint),
+            array(
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => wp_json_encode($payload)
+            ),
+            $headers
+        );
+
+        if ($response === false) {
+            tp_logger("Error: OpenAI LLM request failed.", 1);
+            return false;
+        }
+
+        $parsed = self::parseOpenAIResponse($response);
+        if ($parsed === false || $parsed === '') {
+            tp_logger("Error: Unable to parse OpenAI LLM response.", 1);
+            tp_logger($response, 3);
+            return false;
+        }
+
+        return self::restoreProtectedTerms($parsed, $restore_map);
+    }
+
+    public static function get_openai_translation($tl, $sl, $q)
+    {
+        $config = self::getOpenAIConfig();
+        if ($config['endpoint'] === '') {
+            tp_logger("Error: OpenAI LLM endpoint is missing.", 1);
+            return false;
+        }
+        if ($config['prompt'] === '') {
+            tp_logger("Error: OpenAI LLM prompt is missing.", 1);
+            return false;
+        }
+
+        $target_lang = transposh_consts::get_engine_lang_code($tl, 'r');
+        $source_lang = $sl ? transposh_consts::get_engine_lang_code($sl, 'r') : '';
+
+        if (is_array($q)) {
+            $result = array();
+            foreach ($q as $item) {
+                $translated = self::requestOpenAITranslation(
+                    $config['endpoint'],
+                    $config['api_key'],
+                    $config['model'],
+                    $config['prompt'],
+                    $source_lang,
+                    $target_lang,
+                    urldecode($item)
+                );
+                if ($translated === false) {
+                    return false;
+                }
+                $result[] = $translated;
+            }
+            return $result;
+        }
+
+        return self::requestOpenAITranslation(
+            $config['endpoint'],
+            $config['api_key'],
+            $config['model'],
+            $config['prompt'],
+            $source_lang,
+            $target_lang,
+            urldecode($q)
+        );
+    }
+
+    /******************************************
      * Proxied translation for LibreTranslate
      *****************************************/
     public static function get_libretranslate_translation($tl, $sl, $q)
