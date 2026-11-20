@@ -40,6 +40,9 @@
     function collectAvail(widget) {
         var avail = {}, marked = false;
         var links = widget.querySelectorAll('a[href]');
+        for (var mi = 0; mi < links.length; mi++) {
+            if (links[mi].getAttribute('data-tpw-lang')) { marked = true; break; }
+        }
         for (var i = 0; i < links.length; i++) {
             var href = links[i].getAttribute('href'), path, s;
             try { path = new URL(href, location.href).pathname; } catch (e) { continue; }
@@ -50,7 +53,7 @@
                 if (fl) flagOf[d] = fl;
                 continue;
             }
-            if (d) continue; // marque mais langue inconnue : ne pas deviner
+            if (d || marked) continue; // marque mais langue inconnue, ou widget balise : ne pas deviner
             var raw = (path.split('/')[1] || '').toLowerCase();
             s = segLang(raw);
             if (NAMES[s]) { avail[s] = href; }

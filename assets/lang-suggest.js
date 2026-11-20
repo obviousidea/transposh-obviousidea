@@ -53,13 +53,17 @@
     var widget = document.querySelector('.transposh_flags');
     if (!widget) return;
     var avail = {};
+    var marked = false;
     var links = widget.querySelectorAll('a[href]');
+    for (var mi = 0; mi < links.length; mi++) {
+        if (links[mi].getAttribute('data-tpw-lang')) { marked = true; break; }
+    }
     for (var i = 0; i < links.length; i++) {
         var href = links[i].getAttribute('href'), path;
         try { path = new URL(href, location.href).pathname; } catch (e) { continue; }
         var d = norm(links[i].getAttribute('data-tpw-lang') || '');
         if (LANG_NAMES[d]) { avail[d] = href; continue; }
-        if (d) continue; // marque mais langue inconnue : ne pas deviner
+        if (d || marked) continue; // marque mais langue inconnue, ou widget balise : ne pas deviner
         var s = (path.split('/')[1] || '').toLowerCase();
         if (LANG_NAMES[s]) { avail[s] = href; }
         else if (!avail.en && !/^(wp-admin|wp-content|wp-includes|wp-json|xmlrpc|feed|geodirectory|assets)$/.test(s)) { avail.en = href; } // English = default language, unprefixed URLs
@@ -76,7 +80,13 @@
     }
     if (!target) return;
 
+    // Flag: ask the widget link itself (data-tpw-flag = real flag file code,
+    // ja -> jp). Falling back to the ISO code leaves an empty slot for ja.
     var flagCode = target === 'en' ? 'us' : target;
+    var tlink = widget.querySelector('a[data-tpw-lang="' + target + '"]');
+    if (tlink && tlink.getAttribute('data-tpw-flag')) {
+        flagCode = norm(tlink.getAttribute('data-tpw-flag'));
+    } else if (target === 'ja') { flagCode = 'jp'; }
     var flagCls = widget.querySelector('span.trf-' + flagCode) ? 'trf trf-' + flagCode : '';
 
     var css = document.createElement('style');
@@ -84,7 +94,13 @@
     function topOffset() {
         // Premiere pilule VISIBLE (un widget footer ne doit pas servir d'ancre)
         var pills = document.querySelectorAll('.tpw-dd-btn'), t = null;
-        for (var p = 0; p < pills.length; p++) { if (pills[p].offsetParent !== null) { t = pills[p]; break; } }
+        for (var p = 0; p < pills.length; p++) {
+            if (pills[p].offsetParent === null) continue;
+            var pr = pills[p].getBoundingClientRect();
+            // Visible AND within the initial viewport: a footer pill under the
+            // fold must not anchor (or "show") the bubble.
+            if (pr.bottom > 0 && pr.top < window.innerHeight) { t = pills[p]; break; }
+        }
         if (t) { var tr = t.getBoundingClientRect(); if (tr.bottom > 0) { return Math.round(tr.bottom) + 12; } }
         var f = widget.getBoundingClientRect();
         if (f.bottom > 0) { return Math.round(f.bottom) + 12; }
@@ -174,6 +190,12 @@
     });
     setTimeout(function () {
         if (gone) return;
+        // Two tabs opened together both reach this point: honour a peer tab's
+        // 24h mark instead of showing twice.
+        try {
+            var seen = parseInt(localStorage.getItem(SHOWN_KEY) || '0', 10);
+            if (seen && Date.now() - seen < 86400000) { dismiss(false); return; }
+        } catch (e) {}
         // Re-anchor at display time: the dropdown may have changed the header layout since load
         box.style.top = topOffset() + 'px';
         box.style.visibility = 'visible';
