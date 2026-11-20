@@ -55,6 +55,26 @@ class transposh_base_widget {
     }
 
     /**
+     * Parse the language code -> flag code map from core/constants.php
+     * (the FLAGS constant is not always defined at widget enqueue time).
+     */
+    static function flags_lang_map($plugin_dir) {
+        $map = get_transient('tpw_flags_lang_map');
+        if (is_array($map) && $map) {
+            return $map;
+        }
+        $map = array('en' => 'us');
+        $src = @file_get_contents(trailingslashit($plugin_dir) . 'core/constants.php');
+        if ($src && preg_match_all("/'([a-z-]{2,12})'\s*=>\s*\[[^\]]*'flag'\s*=>\s*'([a-z-]+)'/s", $src, $m, PREG_SET_ORDER)) {
+            foreach ($m as $row) {
+                $map[$row[1]] = $row[2];
+            }
+            set_transient('tpw_flags_lang_map', $map, DAY_IN_SECONDS);
+        }
+        return $map;
+    }
+
+    /**
      * Build inline CSS replacing the sprite with per-flag SVG data URIs for
      * the active viewable languages. Cached in a 12h transient.
      */
@@ -66,11 +86,11 @@ class transposh_base_widget {
         $css = '';
         $opts = get_option('transposh_options');
         $viewable = isset($opts['viewable_languages']) ? (array)$opts['viewable_languages'] : array();
-        $flags = defined('FLAGS') ? FLAGS : array();
+        $flagmap = transposh_base_widget::flags_lang_map($plugin_dir);
         $svgdir = trailingslashit($plugin_dir) . 'assets/flags-svg/';
         $seen = array();
         foreach ($viewable as $code) {
-            $flag = isset($flags[$code]['flag']) ? $flags[$code]['flag'] : $code;
+            $flag = isset($flagmap[$code]) ? $flagmap[$code] : $code;
             if (isset($seen[$flag])) {
                 continue;
             }
