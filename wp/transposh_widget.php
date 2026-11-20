@@ -42,8 +42,62 @@ class transposh_base_widget {
         $basefile = substr($file, 0, -4);
         $widget_css = TRANSPOSH_DIR_WIDGETS . '/' . $basefile . ".css";
         if (file_exists($plugin_dir . $widget_css)) {
-            wp_enqueue_style(str_replace('/', '_', $basefile), $plugin_url . '/' . $widget_css . '?asset=20261120b', '', TRANSPOSH_PLUGIN_VER);
+            $handle = str_replace('/', '_', $basefile);
+            wp_enqueue_style($handle, $plugin_url . '/' . $widget_css . '?asset=20261120b', '', TRANSPOSH_PLUGIN_VER);
+            // Front-end: inline crisp SVG data-URI for active languages, no sprite request
+            if (!is_admin()) {
+                $inline = transposh_base_widget::flags_inline_css($plugin_dir);
+                if ($inline) {
+                    wp_add_inline_style($handle, $inline);
+                }
+            }
         }
+    }
+
+    /**
+     * Build inline CSS replacing the sprite with per-flag SVG data URIs for
+     * the active viewable languages. Cached in a 12h transient.
+     */
+    static function flags_inline_css($plugin_dir) {
+        $css = get_transient('tpw_flags_inline_css');
+        if ($css !== false) {
+            return $css;
+        }
+        $css = '';
+        $opts = get_option('transposh_options');
+        $viewable = isset($opts['viewable_languages']) ? (array)$opts['viewable_languages'] : array();
+        $flags = defined('FLAGS') ? FLAGS : array();
+        $svgdir = trailingslashit($plugin_dir) . 'assets/flags-svg/';
+        $seen = array();
+        foreach ($viewable as $code) {
+            $flag = isset($flags[$code]['flag']) ? $flags[$code]['flag'] : $code;
+            if (isset($seen[$flag])) {
+                continue;
+            }
+            $seen[$flag] = 1;
+            $f = $svgdir . $flag . '.svg';
+            if (!file_exists($f)) {
+                // missing SVG: keep the sprite for everything
+                return '';
+            }
+            $svg = file_get_contents($f);
+            if (strlen($svg) > 10000) {
+                // heavy crest: fall back to a tiny per-flag webp tile
+                $wf = trailingslashit(dirname($svgdir)) . 'flags-tiles/' . $flag . '.webp';
+                if (file_exists($wf)) {
+                    $css .= '.trf-' . $flag . '{background-image:url("data:image/webp;base64,' . base64_encode(file_get_contents($wf)) . '")!important}';
+                    continue;
+                }
+                // no tile either: keep the sprite for everything
+                return '';
+            }
+            $css .= '.trf-' . $flag . '{background-image:url("data:image/svg+xml,' . rawurlencode($svg) . '")!important}';
+        }
+        if ($css) {
+            $css = '.trf{background-image:none!important;background-size:100% 100%!important}' . $css;
+            set_transient('tpw_flags_inline_css', $css, 12 * HOUR_IN_SECONDS);
+        }
+        return $css;
     }
 
     /**
@@ -466,5 +520,10 @@ class transposh_plugin_widget extends WP_Widget {
     }
 
 }
+
+// Invalidate the inline flags CSS cache when language options change
+add_action('update_option_transposh_options', function () {
+    delete_transient('tpw_flags_inline_css');
+});
 
 ?>
