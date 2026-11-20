@@ -85,7 +85,12 @@ class transposh_base_widget {
         }
         $css = '';
         $opts = get_option('transposh_options');
-        $viewable = isset($opts['viewable_languages']) ? (array)$opts['viewable_languages'] : array();
+        $viewable_raw = isset($opts['viewable_languages']) ? $opts['viewable_languages'] : array();
+        if (is_string($viewable_raw)) {
+            $viewable = array_filter(array_map('trim', explode(',', $viewable_raw)));
+        } else {
+            $viewable = (array)$viewable_raw;
+        }
         $flagmap = transposh_base_widget::flags_lang_map($plugin_dir);
         $svgdir = trailingslashit($plugin_dir) . 'assets/flags-svg/';
         $seen = array();
