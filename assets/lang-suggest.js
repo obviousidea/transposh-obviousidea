@@ -70,11 +70,27 @@
     var flagCls = widget.querySelector('span.trf-' + flagCode) ? 'trf trf-' + flagCode : '';
 
     var css = document.createElement('style');
+    // Vertical offset: below the flag row itself so the bubble never covers it
+    function topOffset() {
+        var f = widget.getBoundingClientRect();
+        if (f.bottom > 0) { return Math.round(f.bottom) + 12; }
+        // Widget hidden (mobile burger menu): sit below the tallest visible top bar
+        var best = 0;
+        var cands = document.querySelectorAll('.site-header-wrap, .mobile-header, .site-header, .header-main, header');
+        for (var k = 0; k < cands.length; k++) {
+            var el = cands[k];
+            if (el.offsetParent === null && getComputedStyle(el).position !== 'fixed') { continue; }
+            var hb = el.getBoundingClientRect().bottom;
+            if (hb > best) { best = hb; }
+        }
+        return Math.min(best > 0 ? Math.round(best) + 12 : 72, 180);
+    }
+    var topPx = topOffset();
     css.textContent =
-        '.tpw-suggest{position:fixed;inset-inline-start:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:99999;display:flex;align-items:center;gap:10px;' +
+        '.tpw-suggest{position:fixed;inset-inline-end:16px;top:' + topPx + 'px;z-index:99998;display:flex;align-items:center;gap:10px;' +
         'max-width:340px;padding:10px 12px;border-radius:12px;background:#fff;color:#1f2328;' +
         'box-shadow:0 6px 24px rgba(0,0,0,.16),0 1px 3px rgba(0,0,0,.08);font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;' +
-        'opacity:0;transform:translateY(8px);transition:opacity .25s ease,transform .25s ease}' +
+        'opacity:0;transform:translateY(-8px);transition:opacity .25s ease,transform .25s ease}' +
         '.tpw-suggest.on{opacity:1;transform:none}' +
         '.tpw-suggest .tpw-f{flex:0 0 auto;width:20px;height:15px;border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.12)}' +
         '.tpw-suggest .tpw-t{flex:1 1 auto}' +
@@ -83,7 +99,7 @@
         '.tpw-suggest .tpw-y:hover{background:#1d4ed8}' +
         '.tpw-suggest .tpw-n{background:transparent;color:#6b7280;font-weight:500}' +
         '.tpw-suggest .tpw-n:hover{color:#1f2328}' +
-        '@media (max-width:480px){.tpw-suggest{inset-inline:12px;max-width:none}}' +
+        '@media (max-width:480px){.tpw-suggest{inset-inline:12px;max-width:none;top:' + topPx + 'px}}' +
         '@media (prefers-reduced-motion:reduce){.tpw-suggest{transition:none}}';
     document.head.appendChild(css);
 
@@ -139,6 +155,9 @@
     document.addEventListener('keydown', onKey);
 
     document.body.appendChild(box);
+    window.addEventListener('resize', function () {
+        if (!gone) { box.style.top = topOffset() + 'px'; }
+    });
     setTimeout(function () {
         if (gone) return;
         box.classList.add('on');
